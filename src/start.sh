@@ -77,21 +77,24 @@ comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-M
 
 echo "worker-comfyui: Starting ComfyUI"
 
-# Allow operators to tweak verbosity; default is DEBUG.
-: "${COMFY_LOG_LEVEL:=DEBUG}"
+# Launch flags (log level, metadata embedding, local API mode) are computed
+# from environment variables — see src/launch_flags.sh for the contract.
+source /launch_flags.sh
+COMFY_FLAGS=$(comfy_launch_flags)
+echo "worker-comfyui: ComfyUI launch flags: ${COMFY_FLAGS}"
 
 # PID file used by the handler to detect if ComfyUI is still running
 COMFY_PID_FILE="/tmp/comfyui.pid"
 
 # Serve the API and don't shutdown the container
 if [ "$SERVE_API_LOCALLY" == "true" ]; then
-    python -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
+    python -u /comfyui/main.py ${COMFY_FLAGS} &
     echo $! > "$COMFY_PID_FILE"
 
     echo "worker-comfyui: Starting RunPod Handler"
     python -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
 else
-    python -u /comfyui/main.py --disable-auto-launch --disable-metadata --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
+    python -u /comfyui/main.py ${COMFY_FLAGS} &
     echo $! > "$COMFY_PID_FILE"
 
     echo "worker-comfyui: Starting RunPod Handler"

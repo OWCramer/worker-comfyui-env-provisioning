@@ -136,6 +136,16 @@
         }
       },
       {
+        "key": "EMBED_WORKFLOW_METADATA",
+        "input": {
+          "name": "Embed Workflow Metadata",
+          "type": "boolean",
+          "description": "Embed the generating workflow in output PNGs (drag-to-recreate). Disable if prompts/workflows are sensitive.",
+          "default": true,
+          "advanced": true
+        }
+      },
+      {
         "key": "RUNTIME_PROVISIONING",
         "input": {
           "name": "Runtime Provisioning",

@@ -15,6 +15,7 @@ This document outlines the environment variables available for configuring the `
 | Environment Variable   | Description                                                                                                                                                      | Default |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `COMFY_LOG_LEVEL`      | Controls ComfyUI's internal logging verbosity. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Use `DEBUG` for troubleshooting, `INFO` for production. | `DEBUG` |
+| `EMBED_WORKFLOW_METADATA` | Embed the generating workflow in output PNGs (ComfyUI's `prompt`/`workflow` chunks), enabling drag-to-recreate. Set `false` to strip metadata when prompts/workflows are sensitive. | `true` |
 | `NETWORK_VOLUME_DEBUG` | Enable detailed network volume diagnostics in worker logs. Useful for debugging model path issues. See [Network Volumes & Model Paths](network-volumes.md).      | `false` |
 
 ## Debugging Configuration
