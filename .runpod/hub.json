@@ -1,6 +1,6 @@
 {
-  "title": "ComfyUI",
-  "description": "Generate images with ComfyUI using FLUX.1-dev (fp8)",
+  "title": "ComfyUI (Env Provisioning Test)",
+  "description": "TEST: worker-comfyui with runtime provisioning - custom models (Civitai/HF) and custom nodes via environment variables, no Docker build",
   "type": "serverless",
   "category": "image",
   "iconUrl": "https://cpjrphpz3t5wbwfe.public.blob.vercel-storage.com/comfy-ui.png",
@@ -9,7 +9,11 @@
     "containerDiskInGb": 20,
     "gpuIds": "ADA_24",
     "gpuCount": 1,
-    "allowedCudaVersions": ["12.8", "12.9", "13.0"],
+    "allowedCudaVersions": [
+      "12.8",
+      "12.9",
+      "13.0"
+    ],
     "env": [
       {
         "key": "COMFY_ORG_API_KEY",
