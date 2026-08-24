@@ -56,6 +56,22 @@ except Exception as e:
 fi
 echo "worker-comfyui: GPU available — $GPU_CHECK"
 
+# ---------------------------------------------------------------------------
+# Runtime provisioning
+# Fetch custom models (CHECKPOINT_URLS, LORA_URLS, …) and install custom
+# nodes (CUSTOM_NODES) declared as environment variables — no Docker build
+# needed. No-op when none are set. A failure stops the worker: booting a
+# worker whose workflows would 404 on missing models helps nobody.
+# ---------------------------------------------------------------------------
+if ! python -u -m provisioning; then
+    echo "worker-comfyui: Provisioning failed — see errors above. Fix the endpoint's environment variables and redeploy." >&2
+    exit 1
+fi
+# Provisioning may export PYTHONPATH for volume-cached custom node deps
+if [ -f /tmp/provision_env.sh ]; then
+    source /tmp/provision_env.sh
+fi
+
 # Ensure ComfyUI-Manager runs in offline network mode inside the container
 comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
 

@@ -22,6 +22,126 @@
         }
       },
       {
+        "key": "CHECKPOINT_URLS",
+        "input": {
+          "name": "Custom Checkpoint URLs",
+          "type": "string",
+          "description": "Comma-separated model URLs (Civitai page/download links, Hugging Face, or direct). Downloaded to models/checkpoints at startup. Optional filename: <url>::<filename>",
+          "default": "",
+          "advanced": false
+        }
+      },
+      {
+        "key": "LORA_URLS",
+        "input": {
+          "name": "Custom LoRA URLs",
+          "type": "string",
+          "description": "Comma-separated LoRA URLs, downloaded to models/loras at startup",
+          "default": "",
+          "advanced": false
+        }
+      },
+      {
+        "key": "CUSTOM_NODES",
+        "input": {
+          "name": "Custom Nodes",
+          "type": "string",
+          "description": "Comma-separated Comfy Registry node ids, installed at startup. Pin versions for production: comfyui-kjnodes@1.1.2",
+          "default": "",
+          "advanced": false
+        }
+      },
+      {
+        "key": "CIVITAI_TOKEN",
+        "input": {
+          "name": "Civitai API Token",
+          "type": "string",
+          "description": "Required for most Civitai downloads (https://civitai.com/user/account)",
+          "default": "",
+          "advanced": false
+        }
+      },
+      {
+        "key": "HF_TOKEN",
+        "input": {
+          "name": "Hugging Face Token",
+          "type": "string",
+          "description": "Required for gated Hugging Face models",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "VAE_URLS",
+        "input": {
+          "name": "Custom VAE URLs",
+          "type": "string",
+          "description": "Comma-separated VAE URLs, downloaded to models/vae at startup",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "CONTROLNET_URLS",
+        "input": {
+          "name": "Custom ControlNet URLs",
+          "type": "string",
+          "description": "Comma-separated ControlNet URLs, downloaded to models/controlnet at startup",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "UPSCALE_MODEL_URLS",
+        "input": {
+          "name": "Custom Upscale Model URLs",
+          "type": "string",
+          "description": "Comma-separated upscaler URLs, downloaded to models/upscale_models at startup",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "EMBEDDING_URLS",
+        "input": {
+          "name": "Custom Embedding URLs",
+          "type": "string",
+          "description": "Comma-separated embedding URLs, downloaded to models/embeddings at startup",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "DIFFUSION_MODEL_URLS",
+        "input": {
+          "name": "Custom Diffusion Model URLs",
+          "type": "string",
+          "description": "Comma-separated diffusion model (UNET) URLs, downloaded to models/diffusion_models at startup",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "TEXT_ENCODER_URLS",
+        "input": {
+          "name": "Custom Text Encoder URLs",
+          "type": "string",
+          "description": "Comma-separated text encoder URLs, downloaded to models/text_encoders at startup",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "RUNTIME_PROVISIONING",
+        "input": {
+          "name": "Runtime Provisioning",
+          "type": "boolean",
+          "description": "Kill switch for startup model downloads and custom node installs",
+          "default": true,
+          "advanced": true
+        }
+      },
+      {
         "key": "BUCKET_ENDPOINT_URL",
         "input": {
           "name": "S3 Bucket Endpoint URL",

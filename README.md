@@ -187,6 +187,7 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
+- **[Environment Provisioning Guide](docs/environment-provisioning.md):** Add custom models (Civitai, Hugging Face) and custom nodes with environment variables — no Docker build needed.
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).
 - **[Development Guide](docs/development.md):** Setting up a local environment for development & testing
 - **[CI/CD Guide](docs/ci-cd.md):** Information about the automated Docker build and publish workflows.

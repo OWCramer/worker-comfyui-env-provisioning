@@ -8,8 +8,9 @@
 - **No hot-reload**: handler.py, start.sh, and network_volume.py are `ADD`ed into the Docker image at build time (to `/`). Any change requires a full `docker build` before testing with docker-compose.
 - **Platform mismatch**: Always build with `--platform linux/amd64` for Runpod deployment. Omitting this on ARM hosts (Apple Silicon) produces images that silently fail on Runpod.
 - **No linter or formatter configured**: Follow PEP 8 by convention; there are no pre-commit hooks or CI lint checks.
-- **ComfyUI-Manager forced offline**: `start.sh` calls `comfy-manager-set-mode offline` on every boot. Custom nodes cannot be installed at runtime through the Manager UI — they must be baked into the Docker image.
-- **Network volume mount point**: Models on a network volume must match the directory structure in `src/extra_model_paths.yaml`. The volume is expected at `/runpod-volume` with a `comfyui/models/` subtree.
+- **ComfyUI-Manager forced offline**: `start.sh` calls `comfy-manager-set-mode offline` on every boot. Custom nodes cannot be installed at runtime through the Manager UI — they are either baked into the Docker image or installed at startup via the `CUSTOM_NODES` env var (see `src/provisioning/`), which runs before the Manager is set offline.
+- **Network volume mount point**: Models on a network volume must match the directory structure in `src/extra_model_paths.yaml`. The volume is expected at `/runpod-volume` with a `models/` subtree (e.g. `/runpod-volume/models/checkpoints/`).
+- **Provisioning code is env-var driven and test-covered**: `src/provisioning/` implements startup model downloads and node installs. Its behavior contract lives in `tests/behavioral/` (persona-based suite) — change behavior there first, then the implementation.
 
 ## Model type detection (for workflow parsing)
 

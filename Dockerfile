@@ -114,7 +114,12 @@ RUN uv pip install runpod requests websocket-client
 
 # Add application code and scripts
 ADD src/start.sh src/network_volume.py handler.py test_input.json ./
+ADD src/provisioning /provisioning
 RUN chmod +x /start.sh
+
+# The provisioning node-cache key includes the ComfyUI version so caches on a
+# network volume never survive a base image upgrade
+ENV COMFYUI_VERSION=${COMFYUI_VERSION}
 
 # Add script to install custom nodes
 COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
