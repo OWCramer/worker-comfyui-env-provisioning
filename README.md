@@ -129,6 +129,7 @@ Each object within the `input.images` array must contain:
 | --------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
 | `output`        | Object           | Yes      | Top-level object containing the results of the job execution.                                               |
 | `output.images` | Array of Objects | No       | Present if the workflow generated images. Contains a list of objects, each representing one output image.   |
+| `output.videos` | Array of Objects | No       | Present if the workflow generated videos (mp4, webm, etc. — e.g. Wan, Hunyuan, LTX, SVD workflows). Same object structure as `output.images`. |
 | `output.errors` | Array of Strings | No       | Present if non-fatal errors or warnings occurred during processing (e.g., S3 upload failure, missing data). |
 
 #### `output.images`
@@ -147,6 +148,13 @@ Each object in the `output.images` array has the following structure:
 > - If S3 upload is **not** configured (default), `type` will be `"base64"` and `data` will contain the base64 encoded image string.
 > - If S3 upload **is** configured, `type` will be `"s3_url"` and `data` will contain the S3 URL. See the [Configuration Guide](docs/configuration.md#example-s3-response) for an S3 example response.
 > - Clients interacting with the API need to handle this list-based structure under `output.images`.
+
+#### `output.videos`
+
+Video workflows (Wan, HunyuanVideo, LTX-Video, SVD, AnimateDiff, …) are supported: files with video extensions (`.mp4`, `.webm`, `.mkv`, `.mov`, `.avi`, `.m4v`) are returned under `output.videos` with the same `filename`/`type`/`data` structure, regardless of which save node produced them (core `SaveVideo`, `VHS_VideoCombine`, etc.).
+
+> [!TIP]
+> Configure S3 upload for video workflows — base64-encoding multi-megabyte videos into the JSON response is slow and can exceed response size limits.
 
 ## Usage
 

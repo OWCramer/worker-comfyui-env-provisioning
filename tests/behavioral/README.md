@@ -18,6 +18,7 @@ No network, no GPU, no ComfyUI install needed. See `tests/conftest.py`.
 | `test_persona_node_tinkerer.py`  | Sofia   | A handful of pinned registry custom nodes without a Dockerfile. Installs, volume cache, cache invalidation, failure guidance. |
 | `test_persona_power_user.py`     | Ken     | A full production Flux pipeline: many models across all types + several nodes. Ordering, manifest inventory, determinism, fail-fast, scale. |
 | `test_persona_hostile_input.py`  | Mallory | To break it: typos, traversal filenames, shell metacharacters, garbage APIs. Every failure is a clear config error; nothing escapes the sandbox. |
+| `test_persona_video_creator.py`  | Vera    | Video workflows (Wan, Hunyuan, LTX, SVD). Every video-save node reporting style returns files under `output.videos`; image behavior untouched. |
 
 Run with:
 
