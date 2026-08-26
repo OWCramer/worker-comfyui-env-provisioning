@@ -302,6 +302,107 @@ class TestBypassedNodes:
         assert "muted" in str(excinfo.value).lower()
 
 
+class TestBypassWithNothingToForward:
+    """A bypassed node whose matching-type input is not connected has
+    nothing to forward. The frontend (ExecutableNodeDTO.resolveOutput)
+    warns and drops the link: widget inputs keep their own value, optional
+    connection inputs are omitted, and only a required connection input
+    with no default is unrunnable.
+
+    Found live: imgpack Basic_V38 feeds ImpactSwitch.select from a
+    bypassed PrimitiveInt (which has no inputs at all), so the old
+    'no matching incoming connection' error false-failed the workflow.
+    """
+
+    SWITCH_SCHEMA = {
+        "ImpactSwitch": {
+            "input": {
+                "required": {"select": ["INT", {"default": 1}]},
+                "optional": {
+                    "input1": ["*"],
+                    "input2": ["VAE"],
+                    "input3": ["VAE"],
+                },
+            }
+        }
+    }
+
+    def _switch_graph(self, connect_select=False, connect_vae=False):
+        """ImpactSwitch(34) fed by a bypassed PrimitiveInt(73); optionally
+        a bypassed VAELoader(72) into input2 (type VAE)."""
+        inputs = [
+            {"name": "input1", "type": "*", "link": None},
+            {"name": "select", "type": "INT", "link": 79 if connect_select else None},
+            {"name": "input2", "type": "VAE", "link": 78 if connect_vae else None},
+        ]
+        nodes = [
+            node(34, "ImpactSwitch", inputs=inputs, widgets=[1, False]),
+            node(73, "PrimitiveInt", mode=4,
+                 outputs=[{"name": "INT", "type": "INT"}],
+                 widgets=[2, "fixed"]),
+        ]
+        links = []
+        if connect_select:
+            links.append(link(79, 73, 0, 34, 1, "INT"))
+        if connect_vae:
+            nodes.append(node(72, "VAELoader", mode=4,
+                              outputs=[{"name": "VAE", "type": "VAE"}],
+                              widgets=["x.safetensors"]))
+            links.append(link(78, 72, 0, 34, 2, "VAE"))
+        return {"nodes": nodes, "links": links}
+
+    def test_bypassed_primitive_feeding_widget_keeps_widget_value(self):
+        # The exact live failure: select is a widget input linked from a
+        # bypassed PrimitiveInt. Conversion must succeed and keep the
+        # switch's own select value instead of erroring.
+        schema = {**self.SWITCH_SCHEMA,
+                  "PrimitiveInt": {"input": {"required": {}}}}
+        api = convert_ui_workflow(self._switch_graph(connect_select=True), schema)
+        assert "select" in api["34"]["inputs"]
+        assert api["34"]["inputs"]["select"] == 1  # own widget value, not a link
+        assert "73" not in api
+
+    def test_bypassed_source_with_no_inputs_drops_link(self):
+        # Primitive nodes have no inputs at all — the most common real case.
+        schema = {**self.SWITCH_SCHEMA,
+                  "PrimitiveInt": {"input": {"required": {}}}}
+        api = convert_ui_workflow(self._switch_graph(connect_select=True), schema)
+        assert api["34"]["inputs"]["select"] == 1
+
+    def test_bypassed_source_optional_connection_input_is_dropped(self):
+        # input2 (VAE, optional) linked from a bypassed VAELoader: the
+        # link is dropped and the input simply absent from the prompt.
+        schema = {**self.SWITCH_SCHEMA,
+                  "VAELoader": {"input": {"required": {"vae_name": ["x.safetensors"]}}}}
+        api = convert_ui_workflow(self._switch_graph(connect_vae=True), schema)
+        assert "input2" not in api["34"]["inputs"]
+        assert "72" not in api
+
+    def test_bypassed_source_required_connection_without_default_is_an_error(self):
+        # If the dropped input were a required connection with no default,
+        # the backend could not run it — surface an actionable error.
+        schema = {
+            "NeedsModel": {
+                "input": {
+                    "required": {"model": ["MODEL"]},
+                }
+            }
+        }
+        ui = {
+            "nodes": [
+                node(1, "NeedsModel",
+                     inputs=[{"name": "model", "type": "MODEL", "link": 50}]),
+                node(2, "ModelMangler", mode=4,
+                     outputs=[{"name": "MODEL", "type": "MODEL"}]),
+            ],
+            "links": [link(50, 2, 0, 1, 0, "MODEL")],
+        }
+        with pytest.raises(WorkflowConversionError) as excinfo:
+            convert_ui_workflow(ui, schema)
+        assert "model" in str(excinfo.value)
+        assert "bypass" in str(excinfo.value).lower()
+
+
 class TestClearFailures:
     def test_unknown_custom_node_names_the_node_and_suggests_custom_nodes(
         self, uma_export
@@ -389,3 +490,106 @@ class TestRealCivitaiWorkflow:
         workflows and the error-path test above lost its meaning."""
         types = {n.get("type") for n in civitai_workflow["nodes"]}
         assert self.CUSTOM_NODES_IN_FIXTURE <= types
+
+
+class TestRealImgpackWorkflow:
+    """Image Workflows 'Basic_V38' from Civitai (85k downloads) — vendored
+    unmodified. The first community workflow in the gauntlet to fail on
+    the converter: a bypassed PrimitiveInt feeds ImpactSwitch's 'select'
+    (a widget input), which a bypassed node cannot forward. ComfyUI's
+    frontend drops such links (widget keeps its own value); the converter
+    must do the same instead of false-failing the whole workflow.
+    """
+
+    FIXTURE = (
+        Path(__file__).resolve().parents[2]
+        / "test_resources/workflows/civitai_imgpack_basic_v38_ui_format.json"
+    )
+
+    @pytest.fixture
+    def imgpack_workflow(self):
+        import json
+
+        return json.loads(self.FIXTURE.read_text())
+
+    @pytest.fixture
+    def imgpack_schema(self, imgpack_workflow):
+        """Hermetic schema for every node type in the fixture, derived from
+        the export itself.
+
+        For each node we emit: one schema input per *linked* input (in UI
+        slot order, typed as the slot's type) plus one widget input per
+        ``widgets_values`` entry (with the exported value as default). The
+        converter maps ``widgets_values`` positionally against widget-type
+        schema inputs, so the counts line up by construction and every
+        default is present — the test isolates the bypass/drop behavior
+        instead of asserting semantic value placement.
+        """
+        schema = {}
+        for n in imgpack_workflow["nodes"]:
+            ntype = n.get("type")
+            if ntype in schema:
+                continue
+            inputs = n.get("inputs") or []
+            widgets = n.get("widgets_values") or []
+            required, optional = {}, {}
+            # Connection inputs first (UI slot order). In real schemas,
+            # widget-type linked inputs (e.g. ImpactSwitch.select, an INT
+            # that can be wired or not) sit in "required" with a default —
+            # which is why the frontend can drop the link and keep the
+            # widget value. Pure connection inputs sit in "optional".
+            for inp in inputs:
+                if inp.get("link") is None:
+                    continue
+                name, t = inp.get("name"), inp.get("type")
+                if t in ("INT", "FLOAT", "STRING", "BOOLEAN"):
+                    default = {"INT": 1, "FLOAT": 0.0,
+                               "STRING": "", "BOOLEAN": False}.get(t)
+                    required[name] = [t, {"default": default}]
+                else:
+                    optional[name] = [t] if t is not None else ["*"]
+            # Then widget inputs, positional with the exported values as
+            # defaults (so a missing value can never abort conversion).
+            for w_i, default in enumerate(widgets):
+                if isinstance(default, bool):
+                    required[f"w{w_i}"] = ["BOOLEAN", {"default": default}]
+                elif isinstance(default, (int, float)):
+                    required[f"w{w_i}"] = ["INT", {"default": default}]
+                else:
+                    required[f"w{w_i}"] = ["STRING", {"default": str(default)}]
+            schema[ntype] = {"input": {"required": required, "optional": optional}}
+        return schema
+
+    def test_fixture_is_detected_as_ui_format(self, imgpack_workflow):
+        assert is_ui_format(imgpack_workflow)
+
+    def test_bypassed_primitive_select_converts(self, imgpack_workflow, imgpack_schema):
+        """The exact live failure, whole workflow: conversion must succeed
+        and the unforwardable links must drop (ImpactSwitch.select falls
+        back to its own widget value, never a link reference)."""
+        api = convert_ui_workflow(imgpack_workflow, imgpack_schema)
+        for nid, entry in api.items():
+            if entry["class_type"] == "ImpactSwitch":
+                assert "select" in entry["inputs"]
+                assert not isinstance(entry["inputs"]["select"], list)
+        # No bypassed node appears in the executable graph.
+        bypassed_ids = {str(n["id"]) for n in imgpack_workflow["nodes"] if n.get("mode") == 4}
+        assert not (bypassed_ids & set(api.keys()))
+
+    def test_fixture_keeps_its_bypassed_primitives(self, imgpack_workflow):
+        """Guard: the regression only has meaning if the fixture still
+        carries the bypassed PrimitiveInt -> ImpactSwitch.select links
+        that failed live. If a future export 'cleans' them, this test
+        fails so the fixture can be updated deliberately."""
+        nodes_by_id = {str(n["id"]): n for n in imgpack_workflow["nodes"]}
+        hits = 0
+        for n in imgpack_workflow["nodes"]:
+            if n.get("type") != "PrimitiveInt" or n.get("mode") != 4:
+                continue
+            for out in n.get("outputs") or []:
+                for lid in out.get("links") or []:
+                    link = next(l for l in imgpack_workflow["links"] if l[0] == lid)
+                    consumer = nodes_by_id.get(str(link[3]))
+                    if consumer and consumer.get("type") == "ImpactSwitch":
+                        hits += 1
+        assert hits >= 2  # nodes 34 and 26 in the original export

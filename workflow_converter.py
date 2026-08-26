@@ -13,8 +13,13 @@ Handled UI-graph realities:
   that must be skipped (flagged in the schema as ``control_after_generate``).
 - ``Note``/``MarkdownNote`` nodes are annotations — dropped.
 - ``Reroute`` nodes are wiring sugar — links are followed through them.
-- Muted/bypassed nodes (mode 2 or 4) are dropped; links through them break
-  with a clear error rather than silently producing a wrong image.
+- Muted nodes (mode 2) are dropped; links into them break with a clear
+  error rather than silently producing a wrong image. Bypassed nodes
+  (mode 4) act as passthroughs: their matching-type input is forwarded.
+  When a bypassed node has nothing to forward (e.g. a Primitive node),
+  the link is dropped exactly like the frontend — widget inputs keep
+  their own value, optional connection inputs are omitted, and only a
+  required connection input with no default is an error.
 """
 
 class WorkflowConversionError(Exception):
@@ -93,6 +98,14 @@ def _resolve_source(node_id, output_index, nodes_by_id, links_by_id):
 
     Bypassed nodes (mode 4) forward their input of the matching type to the
     requested output — ComfyUI's frontend does the same when executing.
+
+    Returns ``(node_id, output_index)`` of the real producer, or ``None``
+    when a bypassed node has no matching *connected* input to forward. The
+    frontend (``ExecutableNodeDTO.resolveOutput``) warns and drops the link
+    in that case — widget inputs keep their own value and connection inputs
+    are omitted from the prompt — so callers must treat ``None`` as a drop,
+    not an error. Community workflows lean on this: a bypassed Primitive
+    node has no inputs at all, yet its output stays linked.
     """
     seen = set()
     while True:
@@ -126,11 +139,11 @@ def _resolve_source(node_id, output_index, nodes_by_id, links_by_id):
                 (i for i in connected if i.get("type") == wanted_type), None
             )
         if upstream is None:
-            raise WorkflowConversionError(
-                f"Node {node_id} ({node.get('type')}) is bypassed/rerouted but has "
-                "no matching incoming connection to forward. Unbypass it or remove "
-                "the downstream connection before exporting."
-            )
+            # No connected input to forward. The frontend warns and drops
+            # the link (widget inputs keep their own value; connection
+            # inputs are omitted and validated by the backend), so signal
+            # a drop rather than a fatal conversion error.
+            return None
         link = links_by_id.get(upstream["link"])
         if link is None:
             raise WorkflowConversionError(
@@ -180,6 +193,7 @@ def convert_ui_workflow(ui_workflow, object_info):
             )
 
         # Connected inputs by name, following reroutes to real producers.
+        required_inputs = set((schema.get("input") or {}).get("required") or {})
         linked = {}
         for inp in node.get("inputs") or []:
             link_id = inp.get("link")
@@ -191,7 +205,30 @@ def convert_ui_workflow(ui_workflow, object_info):
                     f"Node {node_id} input '{inp.get('name')}' references "
                     f"missing link {link_id}."
                 )
-            src_id, src_slot = _resolve_source(str(link[1]), link[2], nodes_by_id, links_by_id)
+            resolved = _resolve_source(str(link[1]), link[2], nodes_by_id, links_by_id)
+            if resolved is None:
+                # A bypassed node couldn't forward this link. The frontend
+                # drops it: widget inputs fall back to their own value
+                # (handled in the widget loop below); connection inputs are
+                # omitted from the prompt. Only a required connection input
+                # with no schema default is unrunnable — the backend would
+                # reject it, so say so now with an actionable message.
+                name = inp.get("name")
+                input_type, input_config = None, {}
+                for n2, t2, c2 in _iter_schema_inputs(schema):
+                    if n2 == name:
+                        input_type, input_config = t2, c2
+                        break
+                if input_type is not None and not _input_is_widget(input_type, input_config):
+                    if name in required_inputs and "default" not in input_config:
+                        raise WorkflowConversionError(
+                            f"Node {node_id} ({class_type}) input '{name}' is "
+                            "connected to a bypassed node that has nothing to "
+                            "forward. Unbypass the source node or remove the "
+                            "connection before exporting."
+                        )
+                continue
+            src_id, src_slot = resolved
             if src_id in muted:
                 raise WorkflowConversionError(
                     f"Node {node_id} input '{inp.get('name')}' is connected to "
