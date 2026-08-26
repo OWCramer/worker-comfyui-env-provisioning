@@ -25,8 +25,10 @@ class WorkflowConversionError(Exception):
 ANNOTATION_NODES = {"Note", "MarkdownNote"}
 # Nodes that only forward a connection.
 PASSTHROUGH_NODES = {"Reroute"}
-# Node modes: 0/1 = active, 2 = muted, 4 = bypassed.
-INACTIVE_MODES = {2, 4}
+# Node modes: 0/1 = active, 2 = muted (produces nothing), 4 = bypassed
+# (acts as a passthrough: forwards its matching-type input to its output).
+MODE_MUTED = 2
+MODE_BYPASSED = 4
 
 # Input types that come from a link, never from a widget value.
 _CONNECTION_ONLY_TYPES = {
@@ -76,7 +78,11 @@ def _iter_schema_inputs(node_schema):
 
 
 def _resolve_source(node_id, output_index, nodes_by_id, links_by_id):
-    """Follow Reroute chains back to a real producing node."""
+    """Follow Reroute chains and bypassed nodes back to a real producer.
+
+    Bypassed nodes (mode 4) forward their input of the matching type to the
+    requested output — ComfyUI's frontend does the same when executing.
+    """
     seen = set()
     while True:
         node = nodes_by_id.get(node_id)
@@ -84,22 +90,40 @@ def _resolve_source(node_id, output_index, nodes_by_id, links_by_id):
             raise WorkflowConversionError(
                 f"Workflow references missing node {node_id}."
             )
-        if node.get("type") not in PASSTHROUGH_NODES:
+        is_reroute = node.get("type") in PASSTHROUGH_NODES
+        is_bypassed = node.get("mode") == MODE_BYPASSED
+        if not is_reroute and not is_bypassed:
             return node_id, output_index
         if node_id in seen:
             raise WorkflowConversionError(
-                f"Reroute cycle detected at node {node_id}."
+                f"Passthrough cycle detected at node {node_id}."
             )
         seen.add(node_id)
-        upstream = [i for i in (node.get("inputs") or []) if i.get("link") is not None]
-        if not upstream:
-            raise WorkflowConversionError(
-                f"Reroute node {node_id} has no incoming connection."
+
+        connected = [i for i in (node.get("inputs") or []) if i.get("link") is not None]
+        if is_reroute:
+            upstream = connected[0] if connected else None
+        else:
+            # Bypass: forward the input whose type matches the requested output.
+            outputs = node.get("outputs") or []
+            wanted_type = (
+                outputs[output_index].get("type")
+                if output_index < len(outputs)
+                else None
             )
-        link = links_by_id.get(upstream[0]["link"])
+            upstream = next(
+                (i for i in connected if i.get("type") == wanted_type), None
+            )
+        if upstream is None:
+            raise WorkflowConversionError(
+                f"Node {node_id} ({node.get('type')}) is bypassed/rerouted but has "
+                "no matching incoming connection to forward. Unbypass it or remove "
+                "the downstream connection before exporting."
+            )
+        link = links_by_id.get(upstream["link"])
         if link is None:
             raise WorkflowConversionError(
-                f"Reroute node {node_id} references missing link {upstream[0]['link']}."
+                f"Node {node_id} references missing link {upstream['link']}."
             )
         node_id, output_index = str(link[1]), link[2]
 
@@ -123,11 +147,8 @@ def convert_ui_workflow(ui_workflow, object_info):
     links_by_id = {l[0]: l for l in (ui_workflow.get("links") or []) if l}
     nodes_by_id = {str(n.get("id")): n for n in nodes}
 
-    inactive = {
-        str(n.get("id"))
-        for n in nodes
-        if n.get("mode") in INACTIVE_MODES
-    }
+    muted = {str(n.get("id")) for n in nodes if n.get("mode") == MODE_MUTED}
+    bypassed = {str(n.get("id")) for n in nodes if n.get("mode") == MODE_BYPASSED}
 
     api_workflow = {}
     for node in nodes:
@@ -136,7 +157,7 @@ def convert_ui_workflow(ui_workflow, object_info):
 
         if class_type in ANNOTATION_NODES or class_type in PASSTHROUGH_NODES:
             continue
-        if node_id in inactive:
+        if node_id in muted or node_id in bypassed:
             continue
 
         schema = object_info.get(class_type)
@@ -160,11 +181,11 @@ def convert_ui_workflow(ui_workflow, object_info):
                     f"missing link {link_id}."
                 )
             src_id, src_slot = _resolve_source(str(link[1]), link[2], nodes_by_id, links_by_id)
-            if src_id in inactive:
+            if src_id in muted:
                 raise WorkflowConversionError(
                     f"Node {node_id} input '{inp.get('name')}' is connected to "
-                    f"muted/bypassed node {src_id}. Unmute it or remove the "
-                    "connection before exporting."
+                    f"muted node {src_id}. Unmute it or remove the connection "
+                    "before exporting."
                 )
             linked[inp.get("name")] = [src_id, src_slot]
 

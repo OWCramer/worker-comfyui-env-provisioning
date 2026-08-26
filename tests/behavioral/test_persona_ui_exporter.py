@@ -206,6 +206,49 @@ class TestReroutes:
         assert "30" not in api and "31" not in api
 
 
+class TestBypassedNodes:
+    """Bypass (mode 4) is a passthrough — ComfyUI forwards the node's
+    matching-type input. Community workflows toggle whole groups off this
+    way (Fast Groups Bypasser), so getting this wrong false-fails most
+    real workflows."""
+
+    def test_bypassed_node_is_forwarded_not_fatal(self, uma_export):
+        # Uma bypasses a LatentUpscaleBy between EmptyLatentImage and KSampler.
+        schema = dict(OBJECT_INFO)
+        schema["LatentUpscaleBy"] = {
+            "input": {
+                "required": {
+                    "samples": ["LATENT"],
+                    "upscale_method": [["nearest-exact", "bilinear"]],
+                    "scale_by": ["FLOAT", {"default": 1.5}],
+                }
+            }
+        }
+        uma_export["nodes"].append(
+            node(40, "LatentUpscaleBy", mode=4,
+                 inputs=[{"name": "samples", "type": "LATENT", "link": 200}],
+                 outputs=[{"name": "LATENT", "type": "LATENT"}],
+                 widgets=["nearest-exact", 1.5])
+        )
+        uma_export["links"].append(link(200, 5, 0, 40, 0, "LATENT"))
+        uma_export["links"].append(link(201, 40, 0, 3, 3, "LATENT"))
+        for n in uma_export["nodes"]:
+            if n["id"] == 3:
+                n["inputs"][3]["link"] = 201
+
+        api = convert_ui_workflow(uma_export, schema)
+        # KSampler's latent comes straight from EmptyLatentImage; the
+        # bypassed upscaler is absent from the executable graph.
+        assert api["3"]["inputs"]["latent_image"] == ["5", 0]
+        assert "40" not in api
+
+    def test_muted_node_is_still_a_hard_error(self, uma_export):
+        uma_export["nodes"][0]["mode"] = 2  # mute the checkpoint loader
+        with pytest.raises(WorkflowConversionError) as excinfo:
+            convert_ui_workflow(uma_export, OBJECT_INFO)
+        assert "muted" in str(excinfo.value).lower()
+
+
 class TestClearFailures:
     def test_unknown_custom_node_names_the_node_and_suggests_custom_nodes(
         self, uma_export
