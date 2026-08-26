@@ -140,7 +140,10 @@ FROM base AS downloader
 
 ARG HUGGINGFACE_ACCESS_TOKEN
 # Set default model type if none is provided
-ARG MODEL_TYPE=flux1-dev-fp8
+# Default to a clean base image: this template provisions models at runtime
+# from environment variables, so nothing needs baking. Model-baked variants
+# remain available via --build-arg MODEL_TYPE=<variant>.
+ARG MODEL_TYPE=base
 
 # Change working directory to ComfyUI
 WORKDIR /comfyui
