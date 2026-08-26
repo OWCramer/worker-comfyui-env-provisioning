@@ -234,3 +234,62 @@ class TestClearFailures:
     def test_empty_workflow_is_a_clear_error(self):
         with pytest.raises(WorkflowConversionError):
             convert_ui_workflow({"nodes": [], "links": []}, OBJECT_INFO)
+
+
+class TestRealCivitaiWorkflow:
+    """A genuine community workflow from Civitai (FLUX img2img megapack,
+    107k downloads) — vendored unmodified. Real community workflows are
+    never pure-core: this one carries three custom node types, which is
+    the honest common case the error path must handle well.
+    """
+
+    FIXTURE = (
+        Path(__file__).resolve().parents[2]
+        / "test_resources/workflows/civitai_flux_img2img_ui_format.json"
+    )
+    CUSTOM_NODES_IN_FIXTURE = {
+        "Power Lora Loader (rgthree)",
+        "SDXL Resolutions (JPS)",
+        "HintImageEnchance",
+    }
+
+    # Core nodes the fixture uses that the live /object_info always carries;
+    # stubbed here so the ONLY unknown nodes are the genuinely custom ones.
+    CORE_FLUX_NODES = [
+        "UNETLoader", "DualCLIPLoader", "VAELoader", "LoadImage", "VAEEncode",
+        "ImageScaleBy", "KSamplerSelect", "BasicScheduler", "BasicGuider",
+        "RandomNoise", "SamplerCustomAdvanced", "CLIPTextEncodeFlux",
+    ]
+
+    @pytest.fixture
+    def schema(self):
+        stubs = {n: {"input": {"required": {}}} for n in self.CORE_FLUX_NODES}
+        return {**OBJECT_INFO, **stubs}
+
+    @pytest.fixture
+    def civitai_workflow(self):
+        import json
+
+        return json.loads(self.FIXTURE.read_text())
+
+    def test_real_export_is_detected_as_ui_format(self, civitai_workflow):
+        assert is_ui_format(civitai_workflow)
+
+    def test_conversion_without_custom_nodes_names_the_missing_node(
+        self, civitai_workflow, schema
+    ):
+        """With a core-only schema, the error must name a real custom node
+        from the workflow and point at CUSTOM_NODES — that's the message a
+        user needs to fix their endpoint."""
+        with pytest.raises(WorkflowConversionError) as excinfo:
+            convert_ui_workflow(civitai_workflow, schema)
+        message = str(excinfo.value)
+        assert any(name in message for name in self.CUSTOM_NODES_IN_FIXTURE)
+        assert "CUSTOM_NODES" in message
+
+    def test_fixture_reflects_community_reality(self, civitai_workflow):
+        """Guard: the fixture keeps its custom nodes (nobody 'cleaned' it).
+        If this fails, the fixture stopped representing real community
+        workflows and the error-path test above lost its meaning."""
+        types = {n.get("type") for n in civitai_workflow["nodes"]}
+        assert self.CUSTOM_NODES_IN_FIXTURE <= types
