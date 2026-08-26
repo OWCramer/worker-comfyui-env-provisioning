@@ -34,6 +34,10 @@ MODEL_ENV_VARS = {
     "DIFFUSION_MODEL_URLS": "diffusion_models",
     "TEXT_ENCODER_URLS": "text_encoders",
     "UNET_URLS": "unet",
+    # Impact Pack / detailer ecosystems read from these subtrees:
+    "BBOX_MODEL_URLS": "ultralytics/bbox",
+    "SEGM_MODEL_URLS": "ultralytics/segm",
+    "SAM_MODEL_URLS": "sams",
 }
 
 CUSTOM_NODES_ENV_VAR = "CUSTOM_NODES"

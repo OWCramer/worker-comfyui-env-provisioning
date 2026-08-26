@@ -40,6 +40,9 @@ commas (or newlines):
 | `DIFFUSION_MODEL_URLS` | `models/diffusion_models` |
 | `TEXT_ENCODER_URLS`    | `models/text_encoders`    |
 | `UNET_URLS`            | `models/unet`             |
+| `BBOX_MODEL_URLS`      | `models/ultralytics/bbox` |
+| `SEGM_MODEL_URLS`      | `models/ultralytics/segm` |
+| `SAM_MODEL_URLS`       | `models/sams`             |
 
 ### Supported URL types
 
