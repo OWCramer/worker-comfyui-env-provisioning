@@ -1,125 +1,123 @@
 {
   "tests": [
     {
-      "name": "basic_test",
+      "name": "plumbing_test_no_models",
       "input": {
-        "images": [
-          {
-            "name": "test.png",
-            "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAMklEQVR4nGI5ZdXAQEvARFPTRy0YtWDUglELRi0YtWDUglELRi0YtWDUAioCQAAAAP//E24Bx3jUKuYAAAAASUVORK5CYII="
-          }
-        ],
         "workflow": {
-          "6": {
+          "1": {
             "inputs": {
-              "text": "anime cat with massive fluffy fennec ears and a big fluffy tail blonde messy long hair blue eyes wearing a construction outfit placing a fancy black forest cake with candles on top of a dinner table of an old dark Victorian mansion lit by candlelight with a bright window to the foggy forest and very expensive stuff everywhere there are paintings on the walls",
-              "clip": ["30", 1]
+              "width": 512,
+              "height": 512,
+              "batch_size": 1,
+              "color": 5177631
             },
-            "class_type": "CLIPTextEncode",
-            "_meta": {
-              "title": "CLIP Text Encode (Positive Prompt)"
-            }
-          },
-          "8": {
-            "inputs": {
-              "samples": ["31", 0],
-              "vae": ["30", 2]
-            },
-            "class_type": "VAEDecode",
-            "_meta": {
-              "title": "VAE Decode"
-            }
+            "class_type": "EmptyImage"
           },
           "9": {
             "inputs": {
-              "filename_prefix": "ComfyUI",
-              "images": ["8", 0]
+              "filename_prefix": "plumbing_test",
+              "images": [
+                "1",
+                0
+              ]
             },
-            "class_type": "SaveImage",
-            "_meta": {
-              "title": "Save Image"
-            }
+            "class_type": "SaveImage"
+          }
+        }
+      },
+      "timeout": 240000
+    },
+    {
+      "name": "env_provisioning_generation",
+      "input": {
+        "workflow": {
+          "3": {
+            "inputs": {
+              "seed": 42,
+              "steps": 12,
+              "cfg": 7.5,
+              "sampler_name": "euler",
+              "scheduler": "normal",
+              "denoise": 1,
+              "model": [
+                "4",
+                0
+              ],
+              "positive": [
+                "6",
+                0
+              ],
+              "negative": [
+                "7",
+                0
+              ],
+              "latent_image": [
+                "5",
+                0
+              ]
+            },
+            "class_type": "KSampler"
           },
-          "27": {
+          "4": {
+            "inputs": {
+              "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+            },
+            "class_type": "CheckpointLoaderSimple"
+          },
+          "5": {
             "inputs": {
               "width": 512,
               "height": 512,
               "batch_size": 1
             },
-            "class_type": "EmptySD3LatentImage",
-            "_meta": {
-              "title": "EmptySD3LatentImage"
-            }
+            "class_type": "EmptyLatentImage"
           },
-          "30": {
+          "6": {
             "inputs": {
-              "ckpt_name": "flux1-dev-fp8.safetensors"
+              "text": "a lighthouse on a cliff at sunrise, oil painting",
+              "clip": [
+                "4",
+                1
+              ]
             },
-            "class_type": "CheckpointLoaderSimple",
-            "_meta": {
-              "title": "Load Checkpoint"
-            }
+            "class_type": "CLIPTextEncode"
           },
-          "31": {
+          "7": {
             "inputs": {
-              "seed": 243057879077961,
-              "steps": 10,
-              "cfg": 1,
-              "sampler_name": "euler",
-              "scheduler": "simple",
-              "denoise": 1,
-              "model": ["30", 0],
-              "positive": ["35", 0],
-              "negative": ["33", 0],
-              "latent_image": ["27", 0]
+              "text": "blurry, low quality",
+              "clip": [
+                "4",
+                1
+              ]
             },
-            "class_type": "KSampler",
-            "_meta": {
-              "title": "KSampler"
-            }
+            "class_type": "CLIPTextEncode"
           },
-          "33": {
+          "8": {
             "inputs": {
-              "text": "",
-              "clip": ["30", 1]
+              "samples": [
+                "3",
+                0
+              ],
+              "vae": [
+                "4",
+                2
+              ]
             },
-            "class_type": "CLIPTextEncode",
-            "_meta": {
-              "title": "CLIP Text Encode (Negative Prompt)"
-            }
+            "class_type": "VAEDecode"
           },
-          "35": {
+          "9": {
             "inputs": {
-              "guidance": 3.5,
-              "conditioning": ["6", 0]
+              "filename_prefix": "provisioning_test",
+              "images": [
+                "8",
+                0
+              ]
             },
-            "class_type": "FluxGuidance",
-            "_meta": {
-              "title": "FluxGuidance"
-            }
-          },
-          "38": {
-            "inputs": {
-              "images": ["8", 0]
-            },
-            "class_type": "PreviewImage",
-            "_meta": {
-              "title": "Preview Image"
-            }
-          },
-          "40": {
-            "inputs": {
-              "filename_prefix": "ComfyUI",
-              "images": ["8", 0]
-            },
-            "class_type": "SaveImage",
-            "_meta": {
-              "title": "Save Image"
-            }
+            "class_type": "SaveImage"
           }
         }
       },
-      "timeout": 300000
+      "timeout": 600000
     }
   ],
   "config": {
@@ -129,8 +127,16 @@
       {
         "key": "REFRESH_WORKER",
         "value": "false"
+      },
+      {
+        "key": "CHECKPOINT_URLS",
+        "value": "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors"
       }
     ],
-    "allowedCudaVersions": ["12.8", "12.9", "13.0"]
+    "allowedCudaVersions": [
+      "12.8",
+      "12.9",
+      "13.0"
+    ]
   }
 }
