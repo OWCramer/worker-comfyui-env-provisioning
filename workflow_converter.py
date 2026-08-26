@@ -174,6 +174,29 @@ def convert_ui_workflow(ui_workflow, object_info):
     muted = {str(n.get("id")) for n in nodes if n.get("mode") == MODE_MUTED}
     bypassed = {str(n.get("id")) for n in nodes if n.get("mode") == MODE_BYPASSED}
 
+    # Node ids touching at least one connected link (as source or target).
+    connected_in = {str(l[3]) for l in links_by_id.values()}
+    connected_out = {str(l[1]) for l in links_by_id.values()}
+
+    # Unknown node types: a connected one is a real missing custom-node pack.
+    # Report every such node at once so one run surfaces all the gaps.
+    missing = {
+        f"'{node.get('type')}' (node {node.get('id')})"
+        for node in nodes
+        if node.get("type") not in object_info
+        and node.get("type") not in ANNOTATION_NODES
+        and node.get("type") not in PASSTHROUGH_NODES
+        and str(node.get("id")) not in muted
+        and str(node.get("id")) not in bypassed
+        and (str(node.get("id")) in connected_in or str(node.get("id")) in connected_out)
+    }
+    if missing:
+        raise WorkflowConversionError(
+            "Unknown node type(s): " + ", ".join(sorted(missing)) + ". "
+            "If these are custom nodes, install them via CUSTOM_NODES or "
+            "bake them into the image."
+        )
+
     api_workflow = {}
     for node in nodes:
         node_id = str(node.get("id"))
@@ -186,11 +209,12 @@ def convert_ui_workflow(ui_workflow, object_info):
 
         schema = object_info.get(class_type)
         if schema is None:
-            raise WorkflowConversionError(
-                f"Unknown node type '{class_type}' (node {node_id}). "
-                "If this is a custom node, install it via CUSTOM_NODES or "
-                "bake it into the image."
-            )
+            # Disconnected unknown type: a frontend-only UI helper (e.g.
+            # rgthree's "Fast Groups Bypasser" panel), which the frontend
+            # itself keeps out of the API prompt (isVirtualNode). It has no
+            # inputs and no consumers, so skipping it can't change output.
+            # Connected unknown types were already reported above.
+            continue
 
         # Connected inputs by name, following reroutes to real producers.
         required_inputs = set((schema.get("input") or {}).get("required") or {})

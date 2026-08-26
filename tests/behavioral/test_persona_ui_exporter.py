@@ -432,6 +432,56 @@ class TestClearFailures:
         with pytest.raises(WorkflowConversionError):
             convert_ui_workflow({"nodes": [], "links": []}, OBJECT_INFO)
 
+    def test_disconnected_unknown_type_is_skipped(self, uma_export):
+        """A frontend-only UI helper (e.g. rgthree's 'Fast Groups Bypasser'
+        panel, isVirtualNode) has no backend class, so it is absent from
+        /object_info — yet the frontend itself keeps it out of the API
+        prompt. Disconnected, it can't affect the image: skip, don't fail."""
+        uma_export["nodes"].append(
+            node(99, "Fast Groups Bypasser (rgthree)",
+                 outputs=[{"name": "OPT_CONNECTION", "type": "*", "links": None}])
+        )
+        api = convert_ui_workflow(uma_export, OBJECT_INFO)
+        assert "99" not in api
+        assert "3" in api  # the rest of the graph is untouched
+
+    def test_connected_unknown_type_is_a_named_error(self, uma_export):
+        """An unknown type WITH connections is a genuinely missing custom
+        node pack: the error must name the node and point at CUSTOM_NODES."""
+        ghost = node(99, "MysteryPackNode",
+                     outputs=[{"name": "MODEL", "type": "MODEL", "links": [1]}])
+        # Wire the ghost into the KSampler's model input (replaces link 1,
+        # whose old producer was the checkpoint loader node 4).
+        for inp in next(n for n in uma_export["nodes"] if n["id"] == 3)["inputs"]:
+            if inp["name"] == "model":
+                inp["link"] = 1
+        uma_export["nodes"].append(ghost)
+        uma_export["links"].append(link(1, 99, 0, 3, 0, "MODEL"))
+        with pytest.raises(WorkflowConversionError) as excinfo:
+            convert_ui_workflow(uma_export, OBJECT_INFO)
+        message = str(excinfo.value)
+        assert "MysteryPackNode" in message
+        assert "CUSTOM_NODES" in message
+
+    def test_multiple_connected_unknowns_reported_in_one_error(self, uma_export):
+        """Two missing packs should be named in a single error — one run
+        surfaces every gap instead of requiring one failing job per node."""
+        a = node(97, "MissingPackA",
+                 outputs=[{"name": "MODEL", "type": "MODEL", "links": [11]}])
+        b = node(98, "MissingPackB",
+                 outputs=[{"name": "VAE", "type": "VAE", "links": [12]}])
+        for nid, lname, lid in ((3, "model", 11), (8, "vae", 12)):
+            for inp in next(n for n in uma_export["nodes"] if n["id"] == nid)["inputs"]:
+                if inp["name"] == lname:
+                    inp["link"] = lid
+        uma_export["nodes"].extend([a, b])
+        uma_export["links"].extend([link(11, 97, 0, 3, 0, "MODEL"),
+                                    link(12, 98, 0, 8, 1, "VAE")])
+        with pytest.raises(WorkflowConversionError) as excinfo:
+            convert_ui_workflow(uma_export, OBJECT_INFO)
+        message = str(excinfo.value)
+        assert "MissingPackA" in message and "MissingPackB" in message
+
 
 class TestRealCivitaiWorkflow:
     """A genuine community workflow from Civitai (FLUX img2img megapack,
@@ -593,3 +643,19 @@ class TestRealImgpackWorkflow:
                     if consumer and consumer.get("type") == "ImpactSwitch":
                         hits += 1
         assert hits >= 2  # nodes 34 and 26 in the original export
+
+    def test_frontend_ghost_panel_is_skipped(self, imgpack_workflow, imgpack_schema):
+        """The exact live failure, whole workflow: node 2 'Fast Groups
+        Bypasser (rgthree)' is a frontend-only panel (isVirtualNode) — the
+        backend never registers it, so /object_info has no entry for it.
+        The frontend itself keeps such nodes out of the API prompt; the
+        converter must skip it instead of failing the whole run."""
+        assert "2" in {str(n["id"]) for n in imgpack_workflow["nodes"]}
+        ghost_type = "Fast Groups Bypasser (rgthree)"
+        assert any(n.get("type") == ghost_type for n in imgpack_workflow["nodes"])
+        ghost_schema = {t: s for t, s in imgpack_schema.items() if t != ghost_type}
+        api = convert_ui_workflow(imgpack_workflow, ghost_schema)
+        assert "2" not in api
+        # The real rgthree pack node that IS connected still converts...
+        assert any(e["class_type"] == "Power Lora Loader (rgthree)"
+                   for e in api.values())
