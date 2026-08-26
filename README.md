@@ -85,6 +85,9 @@ The following tables describe the fields within the `input` object:
 | `input.images`            | Array  | No       | Optional array of input images. Each image is uploaded to ComfyUI's `input` directory and can be referenced by its `name` in the workflow. |
 | `input.comfy_org_api_key` | String | No       | Optional per-request Comfy.org API key for API Nodes. Overrides the `COMFY_ORG_API_KEY` environment variable if both are set.              |
 
+> [!TIP]
+> `input.workflow` accepts **both** ComfyUI JSON formats: the API export (*Workflow → Export (API)*) and the regular UI export (*Workflow → Save*, or the `workflow` metadata embedded in ComfyUI-generated PNGs). UI-format graphs are converted server-side against the running ComfyUI's node schema.
+
 #### `input.images` Object
 
 Each object within the `input.images` array must contain:

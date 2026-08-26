@@ -19,6 +19,7 @@ No network, no GPU, no ComfyUI install needed. See `tests/conftest.py`.
 | `test_persona_power_user.py`     | Ken     | A full production Flux pipeline: many models across all types + several nodes. Ordering, manifest inventory, determinism, fail-fast, scale. |
 | `test_persona_hostile_input.py`  | Mallory | To break it: typos, traversal filenames, shell metacharacters, garbage APIs. Every failure is a clear config error; nothing escapes the sandbox. |
 | `test_persona_video_creator.py`  | Vera    | Video workflows (Wan, Hunyuan, LTX, SVD). Every video-save node reporting style returns files under `output.videos`; image behavior untouched. |
+| `test_persona_ui_exporter.py`    | Uma     | Sends the raw ComfyUI UI export (Workflow -> Save). Server-side conversion to API format: widget mapping, seed control skips, notes, reroutes — or actionable errors. |
 
 Run with:
 

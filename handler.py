@@ -19,6 +19,7 @@ from network_volume import (
     is_network_volume_debug_enabled,
     run_network_volume_diagnostics,
 )
+import workflow_converter
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -533,6 +534,14 @@ def get_history(prompt_id):
     return response.json()
 
 
+def get_object_info():
+    """Fetch ComfyUI's node schema (/object_info), used to convert UI-format
+    workflow exports into API format."""
+    response = requests.get(f"http://{COMFY_HOST}/object_info", timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
 def get_image_data(filename, subfolder, image_type):
     """
     Fetch image bytes from the ComfyUI /view endpoint.
@@ -730,6 +739,25 @@ def handler(job):
         return {
             "error": f"ComfyUI server ({COMFY_HOST}) not reachable after multiple retries."
         }
+
+    # Accept UI-format exports (Workflow -> Save / PNG 'workflow' chunk) by
+    # converting them to API format against the live ComfyUI node schema.
+    if workflow_converter.is_ui_format(workflow):
+        print("worker-comfyui - UI-format workflow detected, converting to API format...")
+        try:
+            workflow = workflow_converter.convert_ui_workflow(
+                workflow, get_object_info()
+            )
+            print(
+                f"worker-comfyui - Converted UI workflow to API format ({len(workflow)} nodes)"
+            )
+        except workflow_converter.WorkflowConversionError as e:
+            return {
+                "error": f"Could not convert UI-format workflow: {e}",
+                "hint": "You can also export the workflow via 'Workflow > Export (API)' in ComfyUI and send that JSON instead.",
+            }
+        except requests.RequestException as e:
+            return {"error": f"Failed to fetch node schema for workflow conversion: {e}"}
 
     # Upload input images if they exist
     if input_images:

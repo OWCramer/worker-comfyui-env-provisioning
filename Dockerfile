@@ -113,7 +113,7 @@ WORKDIR /
 RUN uv pip install runpod requests websocket-client
 
 # Add application code and scripts
-ADD src/start.sh src/launch_flags.sh src/network_volume.py handler.py test_input.json ./
+ADD src/start.sh src/launch_flags.sh src/network_volume.py handler.py workflow_converter.py test_input.json ./
 ADD src/provisioning /provisioning
 RUN chmod +x /start.sh
 
