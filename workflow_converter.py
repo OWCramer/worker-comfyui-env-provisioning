@@ -39,6 +39,17 @@ _CONNECTION_ONLY_TYPES = {
 }
 _WIDGET_TYPES = {"INT", "FLOAT", "STRING", "BOOLEAN"}
 
+# The frontend appends a control widget ("randomize"/"fixed"/...) after seed
+# widgets. Schemas flag this via control_after_generate, but custom nodes
+# usually declare seed as a plain INT and the frontend adds the control by
+# input-name convention — so we must skip by name too.
+_CONTROL_VALUES = {"fixed", "increment", "decrement", "randomize"}
+_SEED_INPUT_NAMES = {"seed", "noise_seed"}
+
+
+def _has_control_widget(name, config):
+    return bool(config.get("control_after_generate")) or name in _SEED_INPUT_NAMES
+
 
 def is_ui_format(workflow):
     """A UI export has a top-level ``nodes`` list; API format is a dict of
@@ -194,14 +205,24 @@ def convert_ui_workflow(ui_workflow, object_info):
         api_inputs = {}
         cursor = 0
         for name, input_type, config in _iter_schema_inputs(schema):
+            def skip_control():
+                # Skip the phantom control value if present. Peek-check the
+                # actual value: exports differ on whether it's included.
+                nonlocal cursor
+                if (
+                    cursor < len(widget_values)
+                    and widget_values[cursor] in _CONTROL_VALUES
+                ):
+                    cursor += 1
+
             if name in linked:
                 api_inputs[name] = linked[name]
                 # A linked widget-type input still occupies widget slots
                 # (its value plus any control widget).
                 if _input_is_widget(input_type, config):
                     cursor += 1
-                    if config.get("control_after_generate"):
-                        cursor += 1
+                    if _has_control_widget(name, config):
+                        skip_control()
                 continue
             if not _input_is_widget(input_type, config):
                 continue
@@ -217,8 +238,8 @@ def convert_ui_workflow(ui_workflow, object_info):
             cursor += 1
             # Seed-style inputs export a phantom 'control_after_generate'
             # value ("randomize"/"fixed"/...) right after the real value.
-            if config.get("control_after_generate"):
-                cursor += 1
+            if _has_control_widget(name, config):
+                skip_control()
 
         api_workflow[node_id] = {"class_type": class_type, "inputs": api_inputs}
 

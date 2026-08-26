@@ -206,6 +206,59 @@ class TestReroutes:
         assert "30" not in api and "31" not in api
 
 
+class TestCustomNodeSeeds:
+    """Custom nodes declare seed as a plain INT (no control_after_generate
+    flag), but the frontend still appends the control widget by input-name
+    convention. Found live: UmeAiRT_VideoSettings fed 'randomize' into
+    frame_rate, shifting every later widget by one."""
+
+    def test_unflagged_seed_still_skips_the_control_value(self):
+        schema = {
+            "UmeAiRT_VideoSettings": {
+                "input": {
+                    "required": {
+                        "width": ["INT", {"default": 512}],
+                        "height": ["INT", {"default": 512}],
+                        "seconds": ["INT", {"default": 3}],
+                        "steps": ["INT", {"default": 20}],
+                        "cfg": ["FLOAT", {"default": 6.0}],
+                        "shift": ["FLOAT", {"default": 6.0}],
+                        "sampler": [["euler"]],
+                        "scheduler": [["simple"]],
+                        "seed": ["INT", {"default": 0}],  # NO flag
+                        "frame_rate": ["INT", {"default": 16}],
+                    }
+                }
+            }
+        }
+        ui = {
+            "nodes": [node(1, "UmeAiRT_VideoSettings",
+                           widgets=[880, 1120, 3, 20, 6, 6, "euler", "simple",
+                                    924303502919000, "randomize", 16])],
+            "links": [],
+        }
+        api = convert_ui_workflow(ui, schema)
+        ins = api["1"]["inputs"]
+        assert ins["seed"] == 924303502919000
+        assert ins["frame_rate"] == 16  # NOT 'randomize'
+
+    def test_seed_without_exported_control_value_does_not_overskip(self):
+        """Some exports omit the control value — peek before skipping."""
+        schema = {
+            "SeedOnly": {
+                "input": {
+                    "required": {
+                        "seed": ["INT", {"default": 0}],
+                        "steps": ["INT", {"default": 20}],
+                    }
+                }
+            }
+        }
+        ui = {"nodes": [node(1, "SeedOnly", widgets=[42, 30])], "links": []}
+        api = convert_ui_workflow(ui, schema)
+        assert api["1"]["inputs"] == {"seed": 42, "steps": 30}
+
+
 class TestBypassedNodes:
     """Bypass (mode 4) is a passthrough — ComfyUI forwards the node's
     matching-type input. Community workflows toggle whole groups off this
