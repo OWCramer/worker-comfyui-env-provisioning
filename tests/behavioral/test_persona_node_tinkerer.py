@@ -132,6 +132,32 @@ class TestVolumeCache:
         assert marker["nodes"] == ["comfyui-kjnodes@1.1.2", "comfyui-ic-light@1.0.5"]
 
 
+class TestSilentInstallFailures:
+    """comfy-node-install's log parsing can report success for a node id
+    that doesn't exist (found live: 'comfyui-gguf' vs the case-sensitive
+    registry id 'ComfyUI-GGUF'). The filesystem is the truth: no new node
+    directory after a "successful" install is a hard error."""
+
+    def test_success_exit_without_node_dir_is_an_error(self, worker):
+        # Runner returns success but creates nothing.
+        class LyingRunner:
+            def __init__(self, inner): self.inner = inner
+            def __getattr__(self, item): return getattr(self.inner, item)
+            def __call__(self, argv, **kw):
+                from tests.conftest import FakeProc
+                self.inner.calls.append(list(argv))
+                return FakeProc()  # success, no side effects
+
+        worker.environ["CUSTOM_NODES"] = "comfyui-gguf@1.0.0"
+        import pytest as _pytest
+        from provisioning import NodeInstallError
+        with _pytest.raises(NodeInstallError) as excinfo:
+            worker.provision(node_runner=LyingRunner(worker.node_runner))
+        message = str(excinfo.value)
+        assert "comfyui-gguf" in message
+        assert "case-sensitive" in message
+
+
 class TestInstallFailures:
     def test_a_bad_node_name_fails_with_registry_guidance(self, worker):
         worker.node_runner.failing_nodes.add("comfyui-kjnodez")  # typo

@@ -162,6 +162,18 @@ def install_nodes(
             f"Failed to install custom node '{spec}' — verify the name (and "
             "version) at https://registry.comfy.org/",
         )
+        # comfy-node-install's log parsing can miss failures (e.g. an id that
+        # doesn't exist reports success). Trust the filesystem, not the exit
+        # code: a real install always creates a node directory.
+        after = _existing_node_dirs(custom_nodes_dir)
+        installed_normalized = {_normalize(d) for d in after}
+        if not (after - before) and _normalize(spec.name) not in installed_normalized:
+            raise NodeInstallError(
+                f"comfy-node-install reported success for '{spec}' but no node "
+                "directory appeared. The registry id is likely wrong — ids are "
+                "case-sensitive (e.g. 'ComfyUI-GGUF', not 'comfyui-gguf'); "
+                "verify at https://registry.comfy.org/"
+            )
         results.append(NodeResult(spec.name, spec.version, "installed"))
     new_dirs = _existing_node_dirs(custom_nodes_dir) - before
 
