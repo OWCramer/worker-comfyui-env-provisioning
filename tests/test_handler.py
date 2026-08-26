@@ -94,6 +94,37 @@ class TestCheckServer(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestBackgroundProvisioningBoot(unittest.TestCase):
+    """Serverless platforms cull workers whose handler is not up within a
+    ~10-minute health window, so start.sh boots the handler first and
+    provisions in the background. The handler must (a) keep waiting for
+    ComfyUI while the provisioning marker exists, and (b) surface a
+    provisioning failure as the job's error."""
+
+    @patch("handler.os.path.exists")
+    def test_process_reported_alive_while_provisioning(self, mock_exists):
+        mock_exists.side_effect = lambda p: p == handler.PROVISIONING_MARKER_FILE
+        self.assertTrue(handler._is_comfyui_process_alive())
+
+    @patch("handler.os.path.exists", return_value=False)
+    def test_no_marker_falls_back_to_pid_check(self, mock_exists):
+        self.assertIsNone(handler._is_comfyui_process_alive())
+
+    def test_job_reports_provisioning_failure(self):
+        import tempfile, os as _os
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".failed") as f:
+            f.write("Provisioning failed: CHECKPOINT_URLS 401 (set CIVITAI_TOKEN)")
+            failed_path = f.name
+        original = handler.PROVISIONING_FAILED_FILE
+        handler.PROVISIONING_FAILED_FILE = failed_path
+        try:
+            result = handler.handler({"id": "j1", "input": {"workflow": {}}})
+        finally:
+            handler.PROVISIONING_FAILED_FILE = original
+            _os.unlink(failed_path)
+        self.assertIn("CIVITAI_TOKEN", result["error"])
+
+
 class TestQueueWorkflow(unittest.TestCase):
     def _mock_post_response(self):
         mock_response = MagicMock()

@@ -39,6 +39,12 @@ COMFY_API_AVAILABLE_MAX_RETRIES = int(
 COMFY_API_FALLBACK_MAX_RETRIES = 500
 # PID file written by start.sh so we can detect if ComfyUI has crashed
 COMFY_PID_FILE = "/tmp/comfyui.pid"
+
+# start.sh runs provisioning in the background so the handler can report
+# healthy within the platform's boot window. While the marker exists, jobs
+# wait; if the failure file exists, jobs report its message.
+PROVISIONING_MARKER_FILE = "/tmp/provisioning.in_progress"
+PROVISIONING_FAILED_FILE = "/tmp/provisioning.failed"
 # Websocket reconnection behaviour (can be overridden through environment variables)
 # NOTE: more attempts and diagnostics improve debuggability whenever ComfyUI crashes mid-job.
 #   • WEBSOCKET_RECONNECT_ATTEMPTS sets how many times we will try to reconnect.
@@ -210,7 +216,12 @@ def _is_comfyui_process_alive():
     """Check whether the ComfyUI process is still running.
 
     Returns True if alive, False if dead, None if PID file not found.
+    While startup provisioning is still running (marker file present),
+    ComfyUI hasn't been launched yet by design — report True so
+    check_server keeps waiting instead of failing the job.
     """
+    if os.path.exists(PROVISIONING_MARKER_FILE):
+        return True
     pid = _get_comfyui_pid()
     if pid is None:
         return None
@@ -720,6 +731,16 @@ def handler(job):
 
     job_input = job["input"]
     job_id = job["id"]
+
+    # Surface background-provisioning failures as the job error — much more
+    # actionable than "ComfyUI server not reachable".
+    if os.path.exists(PROVISIONING_FAILED_FILE):
+        try:
+            with open(PROVISIONING_FAILED_FILE) as f:
+                detail = f.read().strip()
+        except OSError:
+            detail = "Provisioning failed at worker startup."
+        return {"error": detail}
 
     # Make sure that the input is valid
     validated_data, error_message = validate_input(job_input)

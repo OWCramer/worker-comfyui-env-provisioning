@@ -57,25 +57,23 @@ fi
 echo "worker-comfyui: GPU available — $GPU_CHECK"
 
 # ---------------------------------------------------------------------------
-# Runtime provisioning
-# Fetch custom models (CHECKPOINT_URLS, LORA_URLS, …) and install custom
-# nodes (CUSTOM_NODES) declared as environment variables — no Docker build
-# needed. No-op when none are set. A failure stops the worker: booting a
-# worker whose workflows would 404 on missing models helps nobody.
+# Runtime provisioning + ComfyUI launch — in the BACKGROUND.
+#
+# Serverless platforms cull workers whose handler is not up within a health
+# window (~10 minutes observed). Large model sets (e.g. 20GB+ of video
+# models) cannot finish downloading inside that window, so the handler must
+# start FIRST. The handler waits for ComfyUI while the provisioning marker
+# exists (see handler.py); jobs received meanwhile simply wait.
+#
+# Provisioning failures are written to a marker the handler reports on every
+# job, so users get the actual error instead of a crash-looping worker.
 # ---------------------------------------------------------------------------
-if ! python -u -m provisioning; then
-    echo "worker-comfyui: Provisioning failed — see errors above. Fix the endpoint's environment variables and redeploy." >&2
-    exit 1
-fi
-# Provisioning may export PYTHONPATH for volume-cached custom node deps
-if [ -f /tmp/provision_env.sh ]; then
-    source /tmp/provision_env.sh
-fi
+PROVISIONING_MARKER="/tmp/provisioning.in_progress"
+PROVISIONING_FAILED="/tmp/provisioning.failed"
+COMFY_PID_FILE="/tmp/comfyui.pid"
 
-# Ensure ComfyUI-Manager runs in offline network mode inside the container
-comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
-
-echo "worker-comfyui: Starting ComfyUI"
+rm -f "$PROVISIONING_MARKER" "$PROVISIONING_FAILED"
+touch "$PROVISIONING_MARKER"
 
 # Launch flags (log level, metadata embedding, local API mode) are computed
 # from environment variables — see src/launch_flags.sh for the contract.
@@ -83,20 +81,31 @@ source /launch_flags.sh
 COMFY_FLAGS=$(comfy_launch_flags)
 echo "worker-comfyui: ComfyUI launch flags: ${COMFY_FLAGS}"
 
-# PID file used by the handler to detect if ComfyUI is still running
-COMFY_PID_FILE="/tmp/comfyui.pid"
+(
+    if ! python -u -m provisioning; then
+        echo "worker-comfyui: Provisioning failed — see errors above. Fix the endpoint's environment variables." >&2
+        echo "Provisioning failed at worker startup — check the endpoint's environment variables (model URLs, CUSTOM_NODES, tokens) and see worker logs for details." > "$PROVISIONING_FAILED"
+        rm -f "$PROVISIONING_MARKER"
+        exit 1
+    fi
 
-# Serve the API and don't shutdown the container
-if [ "$SERVE_API_LOCALLY" == "true" ]; then
+    # Provisioning may export PYTHONPATH for volume-cached custom node deps
+    if [ -f /tmp/provision_env.sh ]; then
+        source /tmp/provision_env.sh
+    fi
+
+    # Ensure ComfyUI-Manager runs in offline network mode inside the container
+    comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
+
+    echo "worker-comfyui: Starting ComfyUI"
     python -u /comfyui/main.py ${COMFY_FLAGS} &
     echo $! > "$COMFY_PID_FILE"
+    rm -f "$PROVISIONING_MARKER"
+) &
 
-    echo "worker-comfyui: Starting RunPod Handler"
+echo "worker-comfyui: Starting RunPod Handler (provisioning continues in background)"
+if [ "$SERVE_API_LOCALLY" == "true" ]; then
     python -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
 else
-    python -u /comfyui/main.py ${COMFY_FLAGS} &
-    echo $! > "$COMFY_PID_FILE"
-
-    echo "worker-comfyui: Starting RunPod Handler"
     python -u /handler.py
 fi
