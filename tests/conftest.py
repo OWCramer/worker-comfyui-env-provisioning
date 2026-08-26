@@ -204,9 +204,10 @@ class FakeNodeRunner:
                 (node_dir / "requirements.txt").write_text(self.requirements[name])
             return FakeProc()
         if argv[:4] == ["python", "-m", "pip", "install"]:
-            target = Path(argv[argv.index("--target") + 1])
-            target.mkdir(parents=True, exist_ok=True)
-            (target / "fake_dep").mkdir(exist_ok=True)
+            if "--target" in argv:
+                target = Path(argv[argv.index("--target") + 1])
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "fake_dep").mkdir(exist_ok=True)
             return FakeProc()
         return FakeProc(returncode=1, stderr=f"unexpected command: {argv}")
 

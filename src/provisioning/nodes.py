@@ -177,6 +177,20 @@ def install_nodes(
         results.append(NodeResult(spec.name, spec.version, "installed"))
     new_dirs = _existing_node_dirs(custom_nodes_dir) - before
 
+    # Two-venv trap: comfy-cli installs node pip dependencies into ComfyUI's
+    # workspace venv (/comfyui/.venv), but the worker runs ComfyUI with
+    # /opt/venv (see the Dockerfile, which mirrors deps at build time for
+    # baked nodes). Mirror runtime-installed node deps into the running venv
+    # too, or imports like 'gguf' fail at execution time.
+    for name in sorted(new_dirs):
+        requirements = custom_nodes_dir / name / "requirements.txt"
+        if requirements.is_file():
+            _run(
+                runner,
+                ["python", "-m", "pip", "install", "-r", str(requirements)],
+                f"Failed to install Python dependencies for custom node '{name}'",
+            )
+
     if cache_dir is not None:
         _populate_cache(cache_dir, custom_nodes_dir, new_dirs, to_install, runner)
 

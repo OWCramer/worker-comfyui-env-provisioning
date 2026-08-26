@@ -86,10 +86,14 @@ class TestVolumeCache:
         sofia.node_runner.requirements["comfyui-kjnodes"] = "einops>=0.6\n"
         sofia.provision()
 
-        # pip deps were snapshotted into the cache with --target
+        # deps are mirrored into the RUNNING venv (two-venv trap: comfy-cli
+        # installs into /comfyui/.venv, the worker runs /opt/venv) AND
+        # snapshotted into the cache with --target
         pip_calls = [c for c in sofia.node_runner.calls if c[:4] == ["python", "-m", "pip", "install"]]
-        assert len(pip_calls) == 1
-        assert "--target" in pip_calls[0]
+        assert len(pip_calls) == 2
+        venv_installs = [c for c in pip_calls if "--target" not in c]
+        cache_installs = [c for c in pip_calls if "--target" in c]
+        assert len(venv_installs) == 1 and len(cache_installs) == 1
 
         # A fresh container hitting the cache exports the dep dir on PYTHONPATH.
         for node_dir in (sofia.comfy_home / "custom_nodes").iterdir():
@@ -156,6 +160,29 @@ class TestSilentInstallFailures:
         message = str(excinfo.value)
         assert "comfyui-gguf" in message
         assert "case-sensitive" in message
+
+
+class TestVenvDependencyMirror:
+    """Runtime node installs must mirror pip deps into the running venv —
+    found live: ComfyUI-GGUF installed fine but 'gguf' was not importable,
+    because comfy-cli put it in ComfyUI's workspace venv, not /opt/venv."""
+
+    def test_node_requirements_installed_into_running_venv(self, worker_no_volume):
+        worker_no_volume.node_runner.requirements["comfyui-gguf"] = "gguf>=0.9\n"
+        worker_no_volume.environ["CUSTOM_NODES"] = "comfyui-gguf@1.1.0"
+        worker_no_volume.provision()
+        pip_calls = [c for c in worker_no_volume.node_runner.calls
+                     if c[:4] == ["python", "-m", "pip", "install"]]
+        assert len(pip_calls) == 1
+        assert "--target" not in pip_calls[0]  # into the running venv
+        assert any("requirements.txt" in a for a in pip_calls[0])
+
+    def test_nodes_without_requirements_trigger_no_pip(self, worker_no_volume):
+        worker_no_volume.environ["CUSTOM_NODES"] = "comfyui-kjnodes@1.1.2"
+        worker_no_volume.provision()
+        pip_calls = [c for c in worker_no_volume.node_runner.calls
+                     if c[:4] == ["python", "-m", "pip", "install"]]
+        assert pip_calls == []
 
 
 class TestInstallFailures:
