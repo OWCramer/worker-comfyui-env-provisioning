@@ -190,6 +190,75 @@ class TestLoras:
         assert any("stacking it on" in w for w in result.warnings)
 
 
+class TestSplitImageFamilies:
+    """Z-Image, Qwen-Image and Krea 2 split the way Wan does: a diffusion model,
+    a text encoder and a VAE. Only the first is named; the rest are fixed."""
+
+    def repackage(self, filename):
+        return repo(tags=["diffusion-single-file", "comfyui"],
+                    siblings=[{"rfilename": filename}])
+
+    def test_z_image_brings_its_encoder_and_vae(self, hub):
+        hub.add_repo(
+            "Comfy-Org/z_image_turbo",
+            self.repackage("split_files/diffusion_models/z_image_turbo_bf16.safetensors"),
+        )
+
+        result = detected(hub, "Comfy-Org/z_image_turbo")
+
+        assert result.template == "z-image"
+        assert [m.directory for m in result.models] == [
+            "diffusion_models",
+            "text_encoders",
+            "vae",
+        ]
+        assert "qwen_3_4b" in result.models[1].url
+
+    def test_qwen_image_uses_its_own_encoder(self, hub):
+        hub.add_repo(
+            "Comfy-Org/Qwen-Image_ComfyUI",
+            self.repackage("split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors"),
+        )
+
+        result = detected(hub, "Comfy-Org/Qwen-Image_ComfyUI")
+
+        assert result.template == "qwen-image"
+        assert "qwen_2.5_vl_7b" in result.models[1].url
+
+    def test_krea2_is_found_in_a_top_level_directory(self, hub):
+        """This repackage keeps weights in diffusion_models/, not split_files/."""
+        hub.add_repo(
+            "Comfy-Org/Krea-2",
+            self.repackage("diffusion_models/krea2_turbo_fp8_scaled.safetensors"),
+        )
+
+        result = detected(hub, "Comfy-Org/Krea-2")
+
+        assert result.template == "krea2"
+        assert "qwen3vl_4b" in result.models[1].url
+
+    def test_krea2_wins_over_qwen_despite_its_qwen_encoder(self, hub):
+        """Both use a Qwen encoder; only the diffusion model's name separates them."""
+        hub.add_repo(
+            "Comfy-Org/Krea-2",
+            self.repackage("diffusion_models/krea2_turbo_fp8_scaled.safetensors"),
+        )
+
+        assert detected(hub, "Comfy-Org/Krea-2").template == "krea2"
+
+    def test_a_plain_checkpoint_is_untouched_by_this(self, hub):
+        hub.add_repo(
+            "someone/sdxl",
+            repo(tags=["diffusers:StableDiffusionXLPipeline"],
+                 siblings=[{"rfilename": "sd_xl.safetensors"}]),
+        )
+
+        result = detected(hub, "someone/sdxl")
+
+        assert result.template == "checkpoint"
+        assert len(result.models) == 1
+
+
 class TestVideo:
     def test_pulls_the_encoder_and_vae_a_wan_model_needs(self, hub):
         hub.add_repo(

@@ -40,3 +40,35 @@ WAN_COMPANIONS = {
     "wan-ti2v": {"text_encoders": WAN_TEXT_ENCODER, "vae": WAN_22_VAE},
     "wan-t2v": {"text_encoders": WAN_TEXT_ENCODER, "vae": WAN_21_VAE},
 }
+
+_HF = "https://huggingface.co"
+QWEN_IMAGE_VAE = f"{_HF}/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors"
+
+# Families that split across a diffusion model, a text encoder and a VAE, the
+# way Wan does. Only the diffusion model is named by the user; the rest are
+# fixed, so they live here beside the templates that load them.
+#
+# Matched on the diffusion model's filename rather than the repository's
+# pipeline tag: the repackaged repositories that carry single-file weights
+# declare no pipeline at all, while the originals that declare one ship only
+# diffusers-format directories nothing here can load.
+SPLIT_FAMILIES = [
+    {
+        "match": r"krea2",
+        "template": "krea2",
+        "text_encoders": f"{_HF}/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+        "vae": QWEN_IMAGE_VAE,
+    },
+    {
+        "match": r"z[_-]?image",
+        "template": "z-image",
+        "text_encoders": f"{_HF}/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+        "vae": f"{_HF}/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+    },
+    {
+        "match": r"qwen[_-]?image",
+        "template": "qwen-image",
+        "text_encoders": f"{_HF}/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "vae": QWEN_IMAGE_VAE,
+    },
+]

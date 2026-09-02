@@ -25,6 +25,10 @@ SHARD_RE = re.compile(r"-\d{5}-of-\d{5}\.")
 PIPELINE_TAG_RE = re.compile(r"^diffusers:(\w+)$")
 COMPANION_TOKENS = {"ae", "vae", "clip", "encoder", "lora", "loras"}
 
+# Where a repackaged repository keeps the weights worth loading. Anything else
+# nested is a companion the templates get from known_models instead.
+DIFFUSION_DIRS = ("diffusion_models/", "split_files/diffusion_models/")
+
 
 @dataclass
 class Detected:
@@ -124,10 +128,8 @@ def weight_candidates(repo, *, nested_prefix=None):
         if sibling.get("rfilename", "").endswith(".safetensors")
     ]
     names = [name for name in names if not SHARD_RE.search(name)]
-    if nested_prefix:
-        names = [n for n in names if n.startswith(nested_prefix) or "/" not in n]
-    else:
-        names = [n for n in names if "/" not in n]
+    prefixes = (nested_prefix,) if nested_prefix else DIFFUSION_DIRS
+    names = [n for n in names if "/" not in n or n.startswith(prefixes)]
 
     weights = [n for n in names if not _is_companion(n.rsplit("/", 1)[-1])]
     return weights or names
@@ -207,6 +209,31 @@ def _detect_video(repo, repo_id, requested_file):
     )
 
 
+def _split_family(filename):
+    """The three-file family a diffusion model belongs to, if any."""
+    for family in known_models.SPLIT_FAMILIES:
+        if re.search(family["match"], filename, re.I):
+            return family
+    return None
+
+
+def _detect_split_family(repo, repo_id, requested_file):
+    """A diffusion model plus the text encoder and VAE its template loads."""
+    filename = requested_file or pick_weights(repo, repo_id=repo_id)
+    family = _split_family(filename)
+    if family is None:
+        return None
+
+    return Detected(
+        template=family["template"],
+        models=[
+            _spec(_hf_url(repo_id, filename), "diffusion_models", "model.safetensors"),
+            _spec(family["text_encoders"], "text_encoders", "text_encoder.safetensors"),
+            _spec(family["vae"], "vae", "vae.safetensors"),
+        ],
+    )
+
+
 def _detect_lora(repo, repo_id, requested_file, *, session, hf_token):
     filename = requested_file or pick_weights(repo, repo_id=repo_id)
     label = base_model_label(repo)
@@ -249,6 +276,10 @@ def detect(source, *, session, hf_token=None):
 
     if is_lora(repo):
         return _detect_lora(repo, repo_id, requested_file, session=session, hf_token=hf_token)
+
+    split = _detect_split_family(repo, repo_id, requested_file)
+    if split is not None:
+        return split
 
     filename = requested_file or pick_weights(repo, repo_id=repo_id)
     pipeline = pipeline_class(repo)

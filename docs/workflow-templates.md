@@ -26,6 +26,9 @@ behaves differently.
 | `checkpoint-lora` | that, plus a LoRA                                     | image |
 | `flux`            | a single-file FLUX checkpoint                         | image |
 | `flux-lora`       | that, plus a LoRA                                     | image |
+| `z-image`         | Z-Image Turbo diffusion model, Qwen3 encoder, its VAE   | image |
+| `qwen-image`      | Qwen-Image diffusion model, Qwen2.5-VL encoder, its VAE | image |
+| `krea2`           | Krea 2 Turbo diffusion model, Qwen3-VL encoder, Qwen image VAE | image |
 | `wan-ti2v`        | Wan 2.2 TI2V diffusion model, umt5 encoder, Wan 2.2 VAE | video |
 | `wan-t2v`         | Wan 2.1 diffusion model, umt5 encoder, Wan 2.1 VAE      | video |
 
