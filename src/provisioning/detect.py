@@ -185,8 +185,8 @@ def _wan_template(repo_id, filename, tags):
     if re.search(r"wan[\s._-]?2\.1", joined, re.I):
         return "wan-t2v"
     raise ResolutionError(
-        f"{repo_id} is a Wan model we have no template for. Wan 2.2 TI2V and "
-        "Wan 2.1 are supported."
+        f"{repo_id} is a video model we have no template for. Wan 2.2 TI2V and "
+        "Wan 2.1 are the video models supported so far."
     )
 
 
@@ -251,16 +251,27 @@ def detect(source, *, session, hf_token=None):
         return _detect_lora(repo, repo_id, requested_file, session=session, hf_token=hf_token)
 
     filename = requested_file or pick_weights(repo, repo_id=repo_id)
-    template = known_models.CHECKPOINT_TEMPLATES.get(pipeline_class(repo) or "")
+    pipeline = pipeline_class(repo)
+    template = known_models.CHECKPOINT_TEMPLATES.get(pipeline or "")
     warnings = []
+
+    if template is None and pipeline:
+        # It says what it is and we have no template for it. Loading it through
+        # CheckpointLoaderSimple anyway would render nonsense rather than fail,
+        # which is worse than saying so.
+        raise ResolutionError(
+            f"{repo_id} is a {pipeline} model, which no template here covers. "
+            "Set COMFY_TEMPLATE and the per-directory URL variables to run it "
+            "on a workflow of your own."
+        )
+
     if template is None:
-        # CheckpointLoaderSimple loads most single-file checkpoints whatever the
-        # architecture, so an unfamiliar one is worth trying with a warning
-        # rather than refusing outright.
+        # No architecture declared at all, which is the common shape for a
+        # community single-file merge. CheckpointLoaderSimple loads those.
         template = "checkpoint"
         warnings.append(
-            f"{repo_id} declares no architecture we recognise; running it on the "
-            "checkpoint template. Set COMFY_TEMPLATE if that is wrong."
+            f"{repo_id} declares no architecture; running it on the checkpoint "
+            "template. Set COMFY_TEMPLATE if that is wrong."
         )
 
     return Detected(

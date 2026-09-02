@@ -48,14 +48,23 @@ class TestCheckpoints:
 
         assert result.template == "flux"
 
-    def test_falls_back_to_the_checkpoint_template_with_a_warning(self, hub):
-        # An unfamiliar architecture still loads through CheckpointLoaderSimple.
+    def test_refuses_an_architecture_it_has_no_template_for(self, hub):
+        # It says what it is, and loading it on the wrong template would render
+        # nonsense rather than fail.
         hub.add_repo("someone/novel", repo(tags=["diffusers:ZImagePipeline"]))
 
-        result = detected(hub, "someone/novel")
+        with pytest.raises(ResolutionError, match="ZImagePipeline"):
+            detected(hub, "someone/novel")
+
+    def test_falls_back_only_when_no_architecture_is_declared(self, hub):
+        # The common shape for a community single-file merge, which
+        # CheckpointLoaderSimple does load.
+        hub.add_repo("someone/merge", repo(tags=["safetensors"]))
+
+        result = detected(hub, "someone/merge")
 
         assert result.template == "checkpoint"
-        assert any("no architecture we recognise" in w for w in result.warnings)
+        assert any("declares no architecture" in w for w in result.warnings)
 
     def test_puts_the_weights_where_the_template_loads_them(self, hub):
         hub.add_repo("someone/sdxl", repo(tags=["diffusers:StableDiffusionXLPipeline"]))

@@ -28,7 +28,6 @@ CHECKPOINT_TEMPLATES = {
     "FluxPipeline": "flux",
     "StableDiffusionXLPipeline": "checkpoint",
     "StableDiffusionXLImg2ImgPipeline": "checkpoint",
-    "StableDiffusion3Pipeline": "checkpoint",
     "StableDiffusionPipeline": "checkpoint",
     "StableDiffusionImg2ImgPipeline": "checkpoint",
 }
