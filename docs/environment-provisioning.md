@@ -85,6 +85,9 @@ warning when a node is unpinned).
 Nodes that need system packages (apt) or conflicting torch versions still
 require the [Dockerfile approach](customization.md).
 
+Pair this with [`COMFY_TEMPLATE`](workflow-templates.md) and the endpoint takes
+a prompt rather than a workflow, so nothing has to write a graph to use it.
+
 ## Runpod's shared Hugging Face cache
 
 Hugging Face entries are fetched through the cache Runpod mounts at

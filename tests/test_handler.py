@@ -41,7 +41,9 @@ class TestValidateInput(unittest.TestCase):
             {"images": [{"name": "image1.png", "image": "base64string"}]}
         )
         self.assertIsNotNone(error)
-        self.assertEqual(error, "Missing 'workflow' parameter")
+        # Still an error without a graph, and now says what else would satisfy it.
+        self.assertIn("Missing 'workflow' parameter", error)
+        self.assertIn("COMFY_TEMPLATE", error)
 
     def test_input_with_invalid_images_structure(self):
         validated_data, error = handler.validate_input(

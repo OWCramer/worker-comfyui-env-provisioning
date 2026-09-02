@@ -19,6 +19,7 @@ from network_volume import (
     is_network_volume_debug_enabled,
     run_network_volume_diagnostics,
 )
+import templates
 import workflow_converter
 
 # ---------------------------------------------------------------------------
@@ -176,10 +177,21 @@ def validate_input(job_input):
         except json.JSONDecodeError:
             return None, "Invalid JSON format in input"
 
-    # Validate 'workflow' in input
+    # A graph, or the parameters to build one from the endpoint's template. The
+    # template exists so a caller does not have to write a graph to send a
+    # request; an explicit workflow still wins, so nothing that worked before
+    # behaves differently.
     workflow = job_input.get("workflow")
     if workflow is None:
-        return None, "Missing 'workflow' parameter"
+        try:
+            workflow = templates.build(job_input)
+        except templates.TemplateError as exc:
+            return None, str(exc)
+    if workflow is None:
+        return None, (
+            "Missing 'workflow' parameter. Send a ComfyUI API-format graph, or "
+            f"set {templates.TEMPLATE_ENV_VAR} on the endpoint to send parameters instead."
+        )
 
     # Validate 'images' in input, if provided
     images = job_input.get("images")

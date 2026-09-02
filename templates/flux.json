@@ -1,0 +1,44 @@
+{
+  "description": "FLUX as a single-file checkpoint. Guidance replaces cfg, which stays at 1.",
+  "media": "image",
+  "defaults": {
+    "prompt": "a glass terrarium on a windowsill at golden hour, moss and tiny ferns inside, shallow depth of field",
+    "width": 1024,
+    "height": 1024,
+    "steps": 20,
+    "guidance": 3.5,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "seed": 42
+  },
+  "graph": {
+    "1": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "model.safetensors" } },
+    "2": { "class_type": "CLIPTextEncode", "inputs": { "text": "{{prompt}}", "clip": ["1", 1] } },
+    "3": {
+      "class_type": "FluxGuidance",
+      "inputs": { "guidance": "{{guidance}}", "conditioning": ["2", 0] }
+    },
+    "4": { "class_type": "CLIPTextEncode", "inputs": { "text": "", "clip": ["1", 1] } },
+    "5": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": { "width": "{{width}}", "height": "{{height}}", "batch_size": 1 }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["1", 0],
+        "positive": ["3", 0],
+        "negative": ["4", 0],
+        "latent_image": ["5", 0],
+        "seed": "{{seed}}",
+        "steps": "{{steps}}",
+        "cfg": 1,
+        "sampler_name": "{{sampler_name}}",
+        "scheduler": "{{scheduler}}",
+        "denoise": 1
+      }
+    },
+    "7": { "class_type": "VAEDecode", "inputs": { "samples": ["6", 0], "vae": ["1", 2] } },
+    "8": { "class_type": "SaveImage", "inputs": { "filename_prefix": "runpod", "images": ["7", 0] } }
+  }
+}

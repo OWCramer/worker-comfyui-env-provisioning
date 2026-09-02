@@ -1,0 +1,56 @@
+{
+  "description": "A LoRA stacked on a single-file FLUX checkpoint.",
+  "media": "image",
+  "defaults": {
+    "prompt": "a glass terrarium on a windowsill at golden hour, moss and tiny ferns inside, shallow depth of field",
+    "width": 1024,
+    "height": 1024,
+    "steps": 20,
+    "guidance": 3.5,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "seed": 42,
+    "lora_strength": 1,
+    "trigger_words": ""
+  },
+  "graph": {
+    "1": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "model.safetensors" } },
+    "lora": {
+      "class_type": "LoraLoader",
+      "inputs": {
+        "model": ["1", 0],
+        "clip": ["1", 1],
+        "lora_name": "lora.safetensors",
+        "strength_model": "{{lora_strength}}",
+        "strength_clip": "{{lora_strength}}"
+      }
+    },
+    "2": { "class_type": "CLIPTextEncode", "inputs": { "text": "{{trigger_words}}{{prompt}}", "clip": ["lora", 1] } },
+    "3": {
+      "class_type": "FluxGuidance",
+      "inputs": { "guidance": "{{guidance}}", "conditioning": ["2", 0] }
+    },
+    "4": { "class_type": "CLIPTextEncode", "inputs": { "text": "", "clip": ["lora", 1] } },
+    "5": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": { "width": "{{width}}", "height": "{{height}}", "batch_size": 1 }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["lora", 0],
+        "positive": ["3", 0],
+        "negative": ["4", 0],
+        "latent_image": ["5", 0],
+        "seed": "{{seed}}",
+        "steps": "{{steps}}",
+        "cfg": 1,
+        "sampler_name": "{{sampler_name}}",
+        "scheduler": "{{scheduler}}",
+        "denoise": 1
+      }
+    },
+    "7": { "class_type": "VAEDecode", "inputs": { "samples": ["6", 0], "vae": ["1", 2] } },
+    "8": { "class_type": "SaveImage", "inputs": { "filename_prefix": "runpod", "images": ["7", 0] } }
+  }
+}
