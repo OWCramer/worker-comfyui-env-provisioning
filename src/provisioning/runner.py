@@ -11,7 +11,7 @@ import os
 import time
 from dataclasses import dataclass, field
 
-from . import download, nodes, resolve, spec
+from . import download, hf_cache, nodes, resolve, spec
 
 
 def _log(message):
@@ -89,10 +89,13 @@ def provision(
         civitai_token = environ.get("CIVITAI_TOKEN") or environ.get("CIVITAI_API_TOKEN")
         hf_token = environ.get("HF_TOKEN") or environ.get("HUGGINGFACE_ACCESS_TOKEN")
         root, on_volume = download.models_root(comfy_home, volume_path)
+        cache_root = hf_cache.cache_root(volume_path)
         _log(
             f"Fetching {len(plan.models)} model(s) into {root}"
             + (" (network volume)" if on_volume else "")
         )
+        if cache_root:
+            _log("Runpod model cache is mounted — cached files are linked, not downloaded.")
         for model_spec in plan.models:
             resolved = resolve.resolve_model(
                 model_spec,
@@ -106,6 +109,7 @@ def provision(
                 model_spec,
                 root=root,
                 session=session,
+                cache_root=cache_root,
                 sleep=sleep,
                 lock_wait_seconds=lock_wait_seconds,
                 lock_stale_seconds=lock_stale_seconds,

@@ -252,6 +252,21 @@ class WorkerEnv:
         path.write_bytes(content)
         return path
 
+    def cache_model(self, repo_id, path_within_repo, content=b"cached", revision="c0ffee"):
+        """Simulate a repository Runpod has already cached on the host."""
+        root = (
+            self.volume_path
+            / "huggingface-cache"
+            / "hub"
+            / f"models--{repo_id.replace('/', '--')}"
+        )
+        target = root / "snapshots" / revision / path_within_repo
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        (root / "refs").mkdir(parents=True, exist_ok=True)
+        (root / "refs" / "main").write_text(revision)
+        return target
+
     def bake_node(self, dir_name):
         """Simulate a custom node already baked into the image."""
         path = self.comfy_home / "custom_nodes" / dir_name

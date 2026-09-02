@@ -85,6 +85,28 @@ warning when a node is unpinned).
 Nodes that need system packages (apt) or conflicting torch versions still
 require the [Dockerfile approach](customization.md).
 
+## Runpod's cached models
+
+If the endpoint has a model set in the console's **Model** field, Runpod caches
+that Hugging Face repository on the host and mounts it at
+`/runpod-volume/huggingface-cache/hub`. Any `*_URLS` entry pointing at a file in
+that repository is **linked out of the cache instead of downloaded**, so the
+first request starts immediately rather than pulling the file inside the job.
+
+```
+Model field     = Comfy-Org/flux1-dev
+CHECKPOINT_URLS = https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev-fp8.safetensors::model.safetensors
+```
+
+The log line for that entry reads `cached:` rather than `downloaded:`, and the
+manifest records the same status. Nothing else changes: `::<filename>` still
+decides the on-disk name, Civitai entries are unaffected, and a file the cache
+does not hold is downloaded exactly as before.
+
+Two limits come from the platform: an endpoint can cache **one** repository, and
+caching pulls the **whole** repository, so a repository that publishes many
+quantizations reserves far more space than the one file needed.
+
 ## Attach a network volume (strongly recommended)
 
 Without a volume, every cold-starting worker re-downloads every model. With a

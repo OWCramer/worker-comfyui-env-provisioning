@@ -2,6 +2,9 @@
 
 Behavioral guarantees:
 
+- A model Runpod has already cached on the host is linked into place instead of
+  downloaded, which is the difference between a first request that waits on
+  tens of gigabytes and one that starts immediately.
 - Models land on the network volume (``<volume>/models/<type>/``) when one is
   mounted — matching ``extra_model_paths.yaml`` — so a fleet of workers pays
   each download once. Without a volume they land in ``<comfy_home>/models/``.
@@ -18,6 +21,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import hf_cache
 from .errors import DownloadError
 
 DOWNLOAD_RETRIES = 3
@@ -36,7 +40,7 @@ class DownloadResult:
     filename: str
     directory: str
     path: str
-    status: str  # "downloaded" | "skipped"
+    status: str  # "downloaded" | "cached" | "skipped"
     source: str
     url: str
 
@@ -79,6 +83,22 @@ def _acquire_lock(lock_path, final_path, *, sleep, lock_wait_seconds, lock_stale
                 )
             sleep(LOCK_POLL_SECONDS)
             waited += LOCK_POLL_SECONDS
+
+
+def _link_into_place(source, final_path):
+    """Point final_path at an already-present file, atomically.
+
+    A symlink rather than a copy: the cached file is often tens of gigabytes,
+    and it may sit on a different filesystem from the models tree, which rules
+    out a hard link.
+    """
+    link_path = str(final_path) + ".link"
+    try:
+        os.unlink(link_path)
+    except FileNotFoundError:
+        pass
+    os.symlink(os.fspath(source), link_path)
+    os.replace(link_path, final_path)
 
 
 def _stream_to_file(response, part_path):
@@ -130,6 +150,7 @@ def download_model(
     *,
     root,
     session,
+    cache_root=None,
     sleep=time.sleep,
     lock_wait_seconds=1800.0,
     lock_stale_seconds=3600.0,
@@ -166,6 +187,13 @@ def download_model(
 
     if final_path.exists():
         return result("skipped")
+
+    # Before the lock, because linking is instant and the rename is atomic, so
+    # two workers racing here cannot leave a half-written file between them.
+    cached = hf_cache.cached_file(spec.url, cache_root)
+    if cached is not None:
+        _link_into_place(cached, final_path)
+        return result("cached")
 
     lock_path = str(final_path) + ".lock"
     if not _acquire_lock(
