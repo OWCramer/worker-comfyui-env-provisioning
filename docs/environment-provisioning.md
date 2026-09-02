@@ -22,6 +22,37 @@ worker-comfyui (provisioning): Models ready — reference them in workflows by t
 worker-comfyui (provisioning):   - dreamshaper_8.safetensors  (models/checkpoints, downloaded)
 ```
 
+## Naming one model
+
+`COMFY_MODEL` takes a Hugging Face repository and works the rest out: which file
+holds the weights, whether it is a checkpoint or a LoRA, which
+[template](workflow-templates.md) runs it, and what else that template loads.
+
+```
+COMFY_MODEL = Comfy-Org/flux1-dev
+```
+
+```json
+{ "input": { "prompt": "a lighthouse at sunrise" } }
+```
+
+That is the whole configuration. A LoRA is stacked on the checkpoint its
+`base_model` declares; a Wan diffusion model brings its umt5 encoder and VAE. A
+repository publishing several builds says so and asks to be pointed at one:
+
+```
+COMFY_MODEL = https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors
+```
+
+Architecture comes from Hugging Face's own `diffusers:<Pipeline>` tag, so any
+fine-tune of a supported family is recognised without knowing its name. An
+unrecognised one runs on the `checkpoint` template with a warning, since
+`CheckpointLoaderSimple` loads most single-file checkpoints regardless.
+
+Set `COMFY_TEMPLATE` to override the choice, or use the variables below to place
+files yourself — the two can be combined, and anything listed below is
+downloaded alongside whatever `COMFY_MODEL` resolved to.
+
 ## Model environment variables
 
 Each variable maps to one ComfyUI model directory. Entries are separated by

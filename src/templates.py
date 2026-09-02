@@ -31,6 +31,9 @@ TEMPLATE_DIR = _template_dir()
 TEMPLATE_ENV_VAR = "COMFY_TEMPLATE"
 DEFAULTS_ENV_VAR = "COMFY_TEMPLATE_DEFAULTS"
 
+# Where startup provisioning records the template it detected for COMFY_MODEL.
+DETECTED_TEMPLATE_FILE = "/tmp/provision_template"
+
 PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
 
@@ -42,11 +45,18 @@ def available(template_dir=TEMPLATE_DIR):
     return sorted(path.stem for path in Path(template_dir).glob("*.json"))
 
 
-def selected_template(environ=None):
-    """The template this endpoint was deployed with, if any."""
+def selected_template(environ=None, detected_file=DETECTED_TEMPLATE_FILE):
+    """The template to run: named by the deploy, else the one detected at startup."""
     environ = os.environ if environ is None else environ
     name = (environ.get(TEMPLATE_ENV_VAR) or "").strip()
-    return name or None
+    if name:
+        return name
+
+    try:
+        detected = Path(detected_file).read_text().strip()
+    except OSError:
+        return None
+    return detected or None
 
 
 def load(name, template_dir=TEMPLATE_DIR):
@@ -101,7 +111,7 @@ def _fill(node, params, used):
     return PLACEHOLDER.sub(interpolate, node)
 
 
-def build(job_input, environ=None, template_dir=TEMPLATE_DIR):
+def build(job_input, environ=None, template_dir=TEMPLATE_DIR, detected_file=DETECTED_TEMPLATE_FILE):
     """Expand the endpoint's template using the request's parameters.
 
     Precedence runs template defaults, then the deploy's overrides, then the
@@ -110,7 +120,7 @@ def build(job_input, environ=None, template_dir=TEMPLATE_DIR):
     """
     environ = os.environ if environ is None else environ
 
-    name = selected_template(environ)
+    name = selected_template(environ, detected_file)
     if name is None:
         return None
 

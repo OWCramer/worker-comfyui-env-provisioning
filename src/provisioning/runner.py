@@ -11,7 +11,7 @@ import os
 import time
 from dataclasses import dataclass, field
 
-from . import download, hf_cache, nodes, resolve, spec
+from . import detect, download, hf_cache, nodes, resolve, spec
 
 
 def _log(message):
@@ -67,6 +67,7 @@ def provision(
     manifest_path="/tmp/provision_manifest.json",
     node_runner=None,
     hub=None,
+    template_file="/tmp/provision_template",
     sleep=time.sleep,
     lock_wait_seconds=1800.0,
     lock_stale_seconds=3600.0,
@@ -80,6 +81,30 @@ def provision(
         return manifest
 
     plan = spec.parse_plan(environ)
+
+    # One named model, detected here rather than picked apart by whatever
+    # deployed it: which file holds the weights, which template runs it, and
+    # what else has to come along.
+    detected = None
+    source = (environ.get(spec.MODEL_ENV_VAR) or "").strip()
+    if source:
+        session = session if session is not None else _default_session()
+        detected = detect.detect(
+            source,
+            session=session,
+            hf_token=environ.get("HF_TOKEN") or environ.get("HUGGINGFACE_ACCESS_TOKEN"),
+        )
+        _log(f"{source} -> {detected.template} template, {len(detected.models)} file(s)")
+        # The handler reads this when COMFY_TEMPLATE is unset, so a deploy does
+        # not have to know the family in order to name a template.
+        try:
+            with open(template_file, "w") as fh:
+                fh.write(detected.template)
+        except OSError as exc:  # a read-only /tmp must not fail the deploy
+            manifest.warnings.append(f"Could not record the detected template: {exc}")
+        manifest.warnings.extend(detected.warnings)
+        plan = spec.ProvisionPlan(models=[*detected.models, *plan.models], nodes=plan.nodes)
+
     if plan.is_empty:
         return manifest
 
