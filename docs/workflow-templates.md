@@ -26,7 +26,8 @@ behaves differently.
 | `checkpoint-lora` | that, plus a LoRA                                     | image |
 | `flux`            | a single-file FLUX checkpoint                         | image |
 | `flux-lora`       | that, plus a LoRA                                     | image |
-| `wan-ti2v`        | Wan 2.2 TI2V diffusion model, umt5 encoder, Wan VAE   | video |
+| `wan-ti2v`        | Wan 2.2 TI2V diffusion model, umt5 encoder, Wan 2.2 VAE | video |
+| `wan-t2v`         | Wan 2.1 diffusion model, umt5 encoder, Wan 2.1 VAE      | video |
 
 Each accepts the parameters listed in its `defaults` block. Sending one the
 template does not declare is an error naming the ones it does, rather than being
