@@ -2,9 +2,9 @@
 
 Behavioral guarantees:
 
-- A model Runpod has already cached on the host is linked into place instead of
-  downloaded, which is the difference between a first request that waits on
-  tens of gigabytes and one that starts immediately.
+- Hugging Face files go through the shared cache on the volume (see hf_cache),
+  so a pre-cached model costs nothing and anything else is cached on the way
+  through for the next worker. Only the link into the models tree is local.
 - Models land on the network volume (``<volume>/models/<type>/``) when one is
   mounted — matching ``extra_model_paths.yaml`` — so a fleet of workers pays
   each download once. Without a volume they land in ``<comfy_home>/models/``.
@@ -41,6 +41,8 @@ class DownloadResult:
     directory: str
     path: str
     status: str  # "downloaded" | "cached" | "skipped"
+    """"cached" covers both a cache hit and a download that filled the cache;
+    either way the file is linked from the shared cache rather than copied."""
     source: str
     url: str
 
@@ -101,6 +103,28 @@ def _link_into_place(source, final_path):
     os.replace(link_path, final_path)
 
 
+def _from_hub(spec, hub):
+    """The shared-cache copy of a Hugging Face file, or None to download it.
+
+    Any failure falls through to the plain HTTP path rather than surfacing here,
+    so a hub outage or an unexpected cache state costs a retry instead of the
+    deploy — and the HTTP path owns the actionable messages for a bad URL or a
+    missing token.
+    """
+    if hub is None:
+        return None
+
+    parsed = hf_cache.parse_repo_file(spec.url)
+    if parsed is None:
+        return None
+
+    repo_id, filename, revision = parsed
+    try:
+        return hub(repo_id, filename, revision=revision)
+    except Exception:
+        return None
+
+
 def _stream_to_file(response, part_path):
     with open(part_path, "wb") as fh:
         for chunk in response.iter_content(chunk_size=8 * 1024 * 1024):
@@ -150,7 +174,7 @@ def download_model(
     *,
     root,
     session,
-    cache_root=None,
+    hub=None,
     sleep=time.sleep,
     lock_wait_seconds=1800.0,
     lock_stale_seconds=3600.0,
@@ -188,10 +212,10 @@ def download_model(
     if final_path.exists():
         return result("skipped")
 
-    # Before the lock, because linking is instant and the rename is atomic, so
-    # two workers racing here cannot leave a half-written file between them.
-    cached = hf_cache.cached_file(spec.url, cache_root)
+    cached = _from_hub(spec, hub)
     if cached is not None:
+        # The rename is atomic, so workers racing here cannot see a partial file
+        # and none of them needs the download lock below.
         _link_into_place(cached, final_path)
         return result("cached")
 

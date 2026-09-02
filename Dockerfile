@@ -117,6 +117,16 @@ ADD src/start.sh src/launch_flags.sh src/network_volume.py handler.py workflow_c
 ADD src/provisioning /provisioning
 RUN chmod +x /start.sh
 
+# Runpod mounts its shared Hugging Face cache under the network volume and
+# pre-populates it with the endpoint's Model field, at no charge to the user.
+# Pointing the Hugging Face libraries at it — as worker-vllm does — means
+# provisioning, ComfyUI and any custom node all read and fill the same cache
+# instead of each downloading its own copy.
+ARG BASE_PATH="/runpod-volume"
+ENV HF_HOME="${BASE_PATH}/huggingface-cache/hub" \
+    HUGGINGFACE_HUB_CACHE="${BASE_PATH}/huggingface-cache/hub" \
+    HF_DATASETS_CACHE="${BASE_PATH}/huggingface-cache/datasets"
+
 # The provisioning node-cache key includes the ComfyUI version so caches on a
 # network volume never survive a base image upgrade
 ENV COMFYUI_VERSION=${COMFYUI_VERSION}

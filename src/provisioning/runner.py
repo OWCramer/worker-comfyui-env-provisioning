@@ -38,6 +38,19 @@ class Manifest:
         }
 
 
+def _hub_fetcher(cache_dir, hf_token):
+    """Bind the shared cache and token to a per-file fetch, or None without a volume."""
+    if cache_dir is None:
+        return None
+
+    def fetch(repo_id, filename, *, revision):
+        return hf_cache.hub_download(
+            repo_id, filename, revision=revision, token=hf_token, cache_dir=cache_dir
+        )
+
+    return fetch
+
+
 def _default_session():
     import requests
 
@@ -53,6 +66,7 @@ def provision(
     env_file="/tmp/provision_env.sh",
     manifest_path="/tmp/provision_manifest.json",
     node_runner=None,
+    hub=None,
     sleep=time.sleep,
     lock_wait_seconds=1800.0,
     lock_stale_seconds=3600.0,
@@ -89,13 +103,13 @@ def provision(
         civitai_token = environ.get("CIVITAI_TOKEN") or environ.get("CIVITAI_API_TOKEN")
         hf_token = environ.get("HF_TOKEN") or environ.get("HUGGINGFACE_ACCESS_TOKEN")
         root, on_volume = download.models_root(comfy_home, volume_path)
-        cache_root = hf_cache.cache_root(volume_path)
+        hub = _hub_fetcher(hf_cache.cache_dir(volume_path), hf_token) if hub is None else hub
         _log(
             f"Fetching {len(plan.models)} model(s) into {root}"
             + (" (network volume)" if on_volume else "")
         )
-        if cache_root:
-            _log("Runpod model cache is mounted — cached files are linked, not downloaded.")
+        if hub is not None:
+            _log("Using the shared Hugging Face cache on the volume.")
         for model_spec in plan.models:
             resolved = resolve.resolve_model(
                 model_spec,
@@ -109,7 +123,7 @@ def provision(
                 model_spec,
                 root=root,
                 session=session,
-                cache_root=cache_root,
+                hub=hub,
                 sleep=sleep,
                 lock_wait_seconds=lock_wait_seconds,
                 lock_stale_seconds=lock_stale_seconds,

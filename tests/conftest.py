@@ -220,6 +220,47 @@ class FakeNodeRunner:
 # --------------------------------------------------------------------------
 
 
+class FakeHub:
+    """Stands in for huggingface_hub's cache-aware download.
+
+    Mirrors what the real one does: a file already in the shared cache comes
+    back immediately, a file that is not is fetched into the cache and comes
+    back from there, and anything else raises so the caller falls back to a
+    plain HTTP download.
+    """
+
+    def __init__(self, cache_dir):
+        self.cache_dir = cache_dir
+        self.cached = {}  # (repo_id, filename) -> bytes, already in the cache
+        self.downloadable = {}  # (repo_id, filename) -> bytes, fetched on demand
+        self.calls = []  # (repo_id, filename, revision) in call order
+
+    def preload(self, repo_id, filename, content=b"cached"):
+        """A repository Runpod already cached on the host."""
+        self.cached[(repo_id, filename)] = content
+
+    def publish(self, repo_id, filename, content=b"fetched"):
+        """A repository the hub can fetch but nothing has cached yet."""
+        self.downloadable[(repo_id, filename)] = content
+
+    def _write(self, repo_id, filename, content):
+        path = self.cache_dir / f"models--{repo_id.replace('/', '--')}" / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        return str(path)
+
+    def __call__(self, repo_id, filename, *, revision):
+        self.calls.append((repo_id, filename, revision))
+        key = (repo_id, filename)
+        if key in self.cached:
+            return self._write(repo_id, filename, self.cached[key])
+        if key in self.downloadable:
+            content = self.downloadable.pop(key)
+            self.cached[key] = content
+            return self._write(repo_id, filename, content)
+        raise RuntimeError(f"hub has nothing for {repo_id}/{filename}")
+
+
 class WorkerEnv:
     """A sandboxed stand-in for the worker container filesystem."""
 
@@ -235,6 +276,8 @@ class WorkerEnv:
         self.session = FakeSession()
         self.civitai = CivitaiSimulator(self.session)
         self.node_runner = FakeNodeRunner(self.comfy_home / "custom_nodes")
+        # Only a mounted volume has a shared cache to fetch through.
+        self.hub = FakeHub(self.volume_path / "huggingface-cache" / "hub") if with_volume else None
         self.environ = {}
 
     @property
@@ -251,21 +294,6 @@ class WorkerEnv:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
         return path
-
-    def cache_model(self, repo_id, path_within_repo, content=b"cached", revision="c0ffee"):
-        """Simulate a repository Runpod has already cached on the host."""
-        root = (
-            self.volume_path
-            / "huggingface-cache"
-            / "hub"
-            / f"models--{repo_id.replace('/', '--')}"
-        )
-        target = root / "snapshots" / revision / path_within_repo
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
-        (root / "refs").mkdir(parents=True, exist_ok=True)
-        (root / "refs" / "main").write_text(revision)
-        return target
 
     def bake_node(self, dir_name):
         """Simulate a custom node already baked into the image."""
@@ -284,6 +312,7 @@ class WorkerEnv:
             env_file=str(self.env_file),
             manifest_path=str(self.manifest_path),
             node_runner=self.node_runner,
+            hub=self.hub,
             sleep=lambda seconds: None,
             lock_wait_seconds=5.0,
             lock_stale_seconds=60.0,
